@@ -27,9 +27,6 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🔬 Стерилізую самостійно"),
-        KeyboardButton(text="🏷️ Стерилізовані тварини"),
-    )
-    builder.row(
         KeyboardButton(text="📖 Довідка та інформація"),
     )
     return builder.as_markup(resize_keyboard=True)
@@ -55,9 +52,6 @@ def main_menu_with_draft_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🔬 Стерилізую самостійно"),
-        KeyboardButton(text="🏷️ Стерилізовані тварини"),
-    )
-    builder.row(
         KeyboardButton(text="📖 Довідка та інформація"),
     )
     builder.row(KeyboardButton(text="✏️ Продовжити незавершену заявку"))
@@ -116,5 +110,6 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🩺 Звіти про укуси"),
+        KeyboardButton(text="🏷️ Стерилізовані тварини"),
     )
     return builder.as_markup(resize_keyboard=True)

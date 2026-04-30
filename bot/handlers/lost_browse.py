@@ -105,7 +105,10 @@ def _format_sterilized_card(req: Request, index: int, total: int) -> str:
 
 @router.message(F.text == "🏷️ Стерилізовані тварини")
 async def browse_sterilized_animals(message: Message, session: AsyncSession) -> None:
-    """Показує список тварин що пройшли стерилізацію (статус DONE)."""
+    """Показує список тварин що пройшли стерилізацію (статус DONE) — тільки для адміна."""
+    if message.from_user.id not in settings.all_admin_ids:
+        await message.answer("⛔️ Цей розділ доступний лише адміністратору.")
+        return
     from bot.models.models import Request as RequestModel
     result = await session.execute(
         select(RequestModel)
