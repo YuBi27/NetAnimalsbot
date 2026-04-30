@@ -144,7 +144,7 @@ async def admin_btn_stats(message: Message, session: AsyncSession, state: FSMCon
         f"<b>Цього тижня:</b> {stats.week}\n"
         f"<b>Цього місяця:</b> {stats.month}"
     )
-    sent = await message.answer(text, parse_mode="HTML")
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=admin_menu_keyboard())
     await track_message(state, sent.message_id)
 
 
@@ -230,7 +230,7 @@ async def show_my_requests(message: Message, session: AsyncSession, state: FSMCo
     requests = await get_user_requests(session=session, user_id=user.id)
 
     if not requests:
-        sent = await message.answer("У вас ще немає заявок. Оберіть категорію, щоб подати першу!")
+        sent = await message.answer("У вас ще немає заявок. Оберіть категорію, щоб подати першу!", reply_markup=smart_menu_keyboard(message.from_user.id))
         await track_message(state, sent.message_id)
         return
 
@@ -305,7 +305,7 @@ async def show_request_detail(callback: CallbackQuery, session: AsyncSession, st
 @router.message(F.text == "📖 Довідка та інформація")
 async def show_info(message: Message, state: FSMContext, bot_instance: Bot) -> None:
     await clear_chat(bot_instance, message.chat.id, state)
-    sent = await message.answer(INFO_TEXT, parse_mode="HTML")
+    sent = await message.answer(INFO_TEXT, parse_mode="HTML", reply_markup=smart_menu_keyboard(message.from_user.id))
     await track_message(state, sent.message_id)
 
 
