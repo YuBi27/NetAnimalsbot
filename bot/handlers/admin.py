@@ -78,7 +78,7 @@ def _build_request_text(req: Request) -> str:
     )
 
 
-def _build_status_keyboard(req: Request):
+def _build_status_keyboard(req: Request, page: int = 0):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     allowed = ALLOWED_TRANSITIONS.get(req.status, set())
@@ -88,7 +88,7 @@ def _build_status_keyboard(req: Request):
                 text=_STATUS_LABELS_MAP[st_enum],
                 callback_data=f"status:{_STATUS_KEYS_MAP[st_enum]}:{req.id}",
             )
-    builder.button(text="◀️ До списку", callback_data="admin_page:0")
+    builder.button(text="◀️ До списку", callback_data=f"admin_back:{page}")
     builder.adjust(1)
     return builder.as_markup()
 
@@ -144,12 +144,37 @@ async def noop_callback(callback: CallbackQuery) -> None:
 # ---------------------------------------------------------------------------
 
 @router.callback_query(F.data.startswith("admin_req:"))
-async def admin_view_request(callback: CallbackQuery, session: AsyncSession) -> None:
+async def admin_view_request(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+    bot_instance: Bot,
+) -> None:
     if not callback.from_user or not _is_admin(callback.from_user.id):
         await callback.answer("Немає доступу.", show_alert=True)
         return
 
-    request_id = int(callback.data.split(":")[1])
+    # Формат: admin_req:{page}:{request_id}
+    parts = callback.data.split(":")
+    if len(parts) == 3:
+        _, page_str, request_id_str = parts
+        page = int(page_str)
+    else:
+        # Зворотна сумісність: admin_req:{request_id}
+        request_id_str = parts[1]
+        page = 0
+
+    request_id = int(request_id_str)
+
+    # Перед відкриттям нової заявки — видаляємо медіа попередньої якщо є
+    fsm_data = await state.get_data()
+    old_media_ids: list[int] = fsm_data.get("admin_media_msg_ids", [])
+    chat_id = callback.message.chat.id
+    for mid in old_media_ids:
+        try:
+            await bot_instance.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
 
     # Завантажуємо заявку разом з медіа
     result = await session.execute(
@@ -164,37 +189,74 @@ async def admin_view_request(callback: CallbackQuery, session: AsyncSession) -> 
         return
 
     text = _build_request_text(req)
-    kb = _build_status_keyboard(req)
-
-    # Збираємо фото заявки
-    photos = [m for m in req.media if m.type == MediaType.PHOTO]
-    videos = [m for m in req.media if m.type == MediaType.VIDEO]
+    kb = _build_status_keyboard(req, page)
 
     # Редагуємо поточне повідомлення з текстом
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
-    # Надсилаємо медіа окремими повідомленнями якщо є
+    # Надсилаємо медіа і зберігаємо їх message_id
+    photos = [m for m in req.media if m.type == MediaType.PHOTO]
+    videos = [m for m in req.media if m.type == MediaType.VIDEO]
+    new_media_ids: list[int] = []
+
     if photos or videos:
         media_info = []
         if photos:
-            media_info.append(f"📷 фото: {len(photos)}")
+            media_info.append(f"📷 {len(photos)}")
         if videos:
-            media_info.append(f"🎥 відео: {len(videos)}")
-        await callback.message.answer(f"📎 Медіафайли заявки ({', '.join(media_info)}):")
+            media_info.append(f"🎥 {len(videos)}")
+        header_msg = await callback.message.answer(f"📎 Медіафайли заявки ({', '.join(media_info)}):")
+        new_media_ids.append(header_msg.message_id)
 
         for photo in photos:
             try:
-                await callback.message.answer_photo(photo=photo.file_id)
+                sent = await callback.message.answer_photo(photo=photo.file_id)
+                new_media_ids.append(sent.message_id)
             except Exception as exc:
                 logger.warning("Failed to send photo for request #%s: %s", request_id, exc)
 
         for video in videos:
             try:
-                await callback.message.answer_video(video=video.file_id)
+                sent = await callback.message.answer_video(video=video.file_id)
+                new_media_ids.append(sent.message_id)
             except Exception as exc:
                 logger.warning("Failed to send video for request #%s: %s", request_id, exc)
 
+    # Зберігаємо page і media_ids у FSM
+    await state.update_data(admin_media_msg_ids=new_media_ids, admin_current_page=page)
     await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# Повернення до списку — видаляємо медіа
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data.startswith("admin_back:"))
+async def admin_back_to_list(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
+    bot_instance: Bot,
+) -> None:
+    if not callback.from_user or not _is_admin(callback.from_user.id):
+        await callback.answer("Немає доступу.", show_alert=True)
+        return
+
+    page = int(callback.data.split(":")[1])
+
+    # Видаляємо медіа повідомлення
+    fsm_data = await state.get_data()
+    media_ids: list[int] = fsm_data.get("admin_media_msg_ids", [])
+    chat_id = callback.message.chat.id
+    for mid in media_ids:
+        try:
+            await bot_instance.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
+    await state.update_data(admin_media_msg_ids=[])
+
+    # Повертаємось на потрібну сторінку
+    await _send_requests_page(callback, session, page=page)
 
 
 # ---------------------------------------------------------------------------

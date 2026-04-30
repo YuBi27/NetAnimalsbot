@@ -258,8 +258,14 @@ async def show_request_detail(callback: CallbackQuery, session: AsyncSession) ->
     if req.admin_comment:
         text += f"\n\n💬 <b>Коментар адміна:</b> {req.admin_comment}"
 
-    from bot.models.models import Status as StatusEnum
-    if req.status == StatusEnum.AWAITING_FEEDBACK:
+    from bot.models.models import Category as CategoryEnum, Status as StatusEnum
+    is_self_sterilization = (
+        req.status == StatusEnum.AWAITING_FEEDBACK
+        and req.category == CategoryEnum.STERILIZATION
+        and req.description.startswith("[САМОСТІЙНА СТЕРИЛІЗАЦІЯ]")
+    )
+
+    if is_self_sterilization:
         text += (
             "\n\n⏳ <b>Очікується ваш фідбек!</b>\n"
             "Після завершення стерилізації натисніть кнопку нижче."

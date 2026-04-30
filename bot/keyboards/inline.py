@@ -60,7 +60,7 @@ def admin_requests_page_keyboard(
         st = STATUS_LABELS.get(req.status, "")
         builder.button(
             text=f"#{req.id} {cat} {st}",
-            callback_data=f"admin_req:{req.id}",
+            callback_data=f"admin_req:{page}:{req.id}",
         )
 
     # Навігація — красива пагінація
