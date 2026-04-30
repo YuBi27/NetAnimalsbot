@@ -22,7 +22,6 @@ from bot.services.export_service import ExportService
 from bot.services.request_service import RequestService
 from bot.services.stats_service import StatsService
 from bot.states import AdminCommentStates
-from bot.utils.chat_cleaner import clear_chat, track_message
 from bot.utils.formatters import CATEGORY_LABELS, STATUS_LABELS
 from bot.utils.maps import format_location
 
@@ -127,14 +126,10 @@ async def _send_requests_page(
         try:
             await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         except Exception:
-            sent = await target.message.answer(text, parse_mode="HTML", reply_markup=kb)
-            if state:
-                await track_message(state, sent.message_id)
+            await target.message.answer(text, parse_mode="HTML", reply_markup=kb)
         await target.answer()
     else:
-        sent = await target.answer(text, parse_mode="HTML", reply_markup=kb)
-        if state:
-            await track_message(state, sent.message_id)
+        await target.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,6 @@ from bot.config import settings
 from bot.keyboards.reply import main_menu_keyboard, smart_menu_keyboard
 from bot.models.models import Category, MediaType, Request, Status, User
 from bot.repositories.request_repo import get_requests_filtered
-from bot.utils.chat_cleaner import clear_chat, track_message
 from bot.utils.formatters import format_location
 from bot.utils.maps import make_maps_link
 
@@ -42,7 +41,6 @@ def _format_lost_card(req: Request, index: int, total: int) -> str:
 @router.message(F.text == "🗺️ Переглянути загублених тварин")
 async def browse_lost_animals(message: Message, session: AsyncSession, state: FSMContext) -> None:
     """Показує список активних заявок про загублених тварин."""
-    await clear_chat(message.bot, message.chat.id, state)
     from bot.models.models import Request as RequestModel
     result_new = await session.execute(
         select(RequestModel)
@@ -58,7 +56,6 @@ async def browse_lost_animals(message: Message, session: AsyncSession, state: FS
             "🐾 Наразі немає активних заявок про загублених тварин.",
             reply_markup=smart_menu_keyboard(message.from_user.id),
         )
-        await track_message(state, sent.message_id)
         return
 
     sent = await message.answer(
@@ -66,7 +63,6 @@ async def browse_lost_animals(message: Message, session: AsyncSession, state: FS
         f"Перегляньте їх нижче. Якщо впізнали тварину — натисніть кнопку під фото.",
         parse_mode="HTML",
     )
-    await track_message(state, sent.message_id)
 
     for i, req in enumerate(all_lost, 1):
         text = _format_lost_card(req, i, len(all_lost))
@@ -82,12 +78,10 @@ async def browse_lost_animals(message: Message, session: AsyncSession, state: FS
                 )
             else:
                 sent = await message.answer(text, parse_mode="HTML", reply_markup=kb)
-            await track_message(state, sent.message_id)
         except Exception as exc:
             logger.warning("Failed to send lost animal card #%s: %s", req.id, exc)
 
     sent = await message.answer("Це всі активні заявки.", reply_markup=smart_menu_keyboard(message.from_user.id))
-    await track_message(state, sent.message_id)
 
 
 def _format_sterilized_card(req: Request, index: int, total: int) -> str:
@@ -112,7 +106,6 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession, sta
         await message.answer("⛔️ Цей розділ доступний лише адміністратору.")
         return
 
-    await clear_chat(message.bot, message.chat.id, state)
 
     from bot.models.models import Request as RequestModel
     result = await session.execute(
@@ -129,7 +122,6 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession, sta
             "✂️ Наразі немає записів про стерилізованих тварин.",
             reply_markup=admin_menu_keyboard(),
         )
-        await track_message(state, sent.message_id)
         return
 
     sent = await message.answer(
@@ -137,7 +129,6 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession, sta
         f"Перегляньте їх нижче.",
         parse_mode="HTML",
     )
-    await track_message(state, sent.message_id)
 
     for i, req in enumerate(all_sterilized, 1):
         text = _format_sterilized_card(req, i, len(all_sterilized))
@@ -151,12 +142,10 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession, sta
                 )
             else:
                 sent = await message.answer(text, parse_mode="HTML")
-            await track_message(state, sent.message_id)
         except Exception as exc:
             logger.warning("Failed to send sterilized animal card #%s: %s", req.id, exc)
 
     sent = await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=admin_menu_keyboard())
-    await track_message(state, sent.message_id)
 
 
 @router.callback_query(F.data.startswith("found:"))

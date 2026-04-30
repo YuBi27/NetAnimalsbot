@@ -13,7 +13,6 @@ from bot.keyboards.inline import user_requests_keyboard
 from bot.keyboards.reply import admin_menu_keyboard, main_menu_keyboard, main_menu_with_draft_keyboard, smart_menu_keyboard
 from bot.repositories.request_repo import get_request_by_id, get_user_requests
 from bot.repositories.user_repo import get_or_create_user
-from bot.utils.chat_cleaner import clear_chat, track_message
 from bot.utils.formatters import CATEGORY_LABELS, STATUS_LABELS
 from bot.utils.maps import format_location
 
@@ -68,7 +67,7 @@ def _is_admin(telegram_id: int) -> bool:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, bot_instance: Bot) -> None:
+async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
     await get_or_create_user(
         session=session,
         telegram_id=message.from_user.id,
@@ -77,7 +76,6 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, 
     await session.commit()
 
     # Очищаємо попередній чат
-    await clear_chat(bot_instance, message.chat.id, state)
 
     name = message.from_user.first_name or "друже"
 
@@ -87,7 +85,6 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, 
             reply_markup=admin_menu_keyboard(),
             parse_mode="HTML",
         )
-        await track_message(state, sent.message_id)
         return
 
     fsm_data = await state.get_data()
@@ -103,7 +100,6 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, 
             f"Привіт, {name}! 👋\n\nЯ бот для волонтерів — допомагаю збирати заявки про тварин.\nОберіть дію у меню нижче:",
             reply_markup=smart_menu_keyboard(message.from_user.id),
         )
-    await track_message(state, sent.message_id)
 
 
 # ---------------------------------------------------------------------------
@@ -111,19 +107,17 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, 
 # ---------------------------------------------------------------------------
 
 @router.message(F.text == "📑 Всі заявки")
-async def admin_btn_requests(message: Message, session: AsyncSession, state: FSMContext, bot_instance: Bot) -> None:
+async def admin_btn_requests(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
-    await clear_chat(bot_instance, message.chat.id, state)
     from bot.handlers.admin import _send_requests_page
     await _send_requests_page(message, session, page=0, state=state)
 
 
 @router.message(F.text == "📈 Статистика")
-async def admin_btn_stats(message: Message, session: AsyncSession, state: FSMContext, bot_instance: Bot) -> None:
+async def admin_btn_stats(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
-    await clear_chat(bot_instance, message.chat.id, state)
     from bot.services.stats_service import StatsService
     stats = await StatsService(session).get_stats()
 
@@ -145,24 +139,20 @@ async def admin_btn_stats(message: Message, session: AsyncSession, state: FSMCon
         f"<b>Цього місяця:</b> {stats.month}"
     )
     sent = await message.answer(text, parse_mode="HTML", reply_markup=admin_menu_keyboard())
-    await track_message(state, sent.message_id)
 
 
 @router.message(F.text == "💾 Експорт")
-async def admin_btn_export(message: Message, state: FSMContext, bot_instance: Bot) -> None:
+async def admin_btn_export(message: Message, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
-    await clear_chat(bot_instance, message.chat.id, state)
     from bot.keyboards.inline import export_format_keyboard
     sent = await message.answer("Оберіть формат для експорту заявок:", reply_markup=export_format_keyboard())
-    await track_message(state, sent.message_id)
 
 
 @router.message(F.text == "📣 Розсилка")
-async def admin_btn_broadcast(message: Message, state: FSMContext, bot_instance: Bot) -> None:
+async def admin_btn_broadcast(message: Message, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
-    await clear_chat(bot_instance, message.chat.id, state)
     from aiogram.types import KeyboardButton
     from aiogram.utils.keyboard import ReplyKeyboardBuilder
     from bot.states import BroadcastStates
@@ -177,14 +167,12 @@ async def admin_btn_broadcast(message: Message, state: FSMContext, bot_instance:
         parse_mode="HTML",
         reply_markup=kb,
     )
-    await track_message(state, sent.message_id)
 
 
 @router.message(F.text == "🩺 Звіти про укуси")
-async def admin_btn_bites(message: Message, session: AsyncSession, state: FSMContext, bot_instance: Bot) -> None:
+async def admin_btn_bites(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
-    await clear_chat(bot_instance, message.chat.id, state)
     from sqlalchemy import select
     from bot.models.models import BiteReport
     result = await session.execute(
@@ -194,11 +182,9 @@ async def admin_btn_bites(message: Message, session: AsyncSession, state: FSMCon
 
     if not reports:
         sent = await message.answer("🚨 Звітів про укуси ще немає.", reply_markup=admin_menu_keyboard())
-        await track_message(state, sent.message_id)
         return
 
     sent = await message.answer(f"🚨 <b>Останні звіти про укуси ({len(reports)})</b>", parse_mode="HTML")
-    await track_message(state, sent.message_id)
     for r in reports:
         created = r.created_at.strftime("%d.%m.%Y %H:%M") if r.created_at else "—"
         text = (
@@ -210,9 +196,7 @@ async def admin_btn_bites(message: Message, session: AsyncSession, state: FSMCon
             f"<b>Контакт:</b> {r.contact or '—'}"
         )
         sent = await message.answer(text, parse_mode="HTML")
-        await track_message(state, sent.message_id)
     sent = await message.answer("Це останні 20 звітів.", reply_markup=admin_menu_keyboard())
-    await track_message(state, sent.message_id)
 
 
 # ---------------------------------------------------------------------------
@@ -220,8 +204,7 @@ async def admin_btn_bites(message: Message, session: AsyncSession, state: FSMCon
 # ---------------------------------------------------------------------------
 
 @router.message(F.text == "🗂️ Мої заявки")
-async def show_my_requests(message: Message, session: AsyncSession, state: FSMContext, bot_instance: Bot) -> None:
-    await clear_chat(bot_instance, message.chat.id, state)
+async def show_my_requests(message: Message, session: AsyncSession, state: FSMContext) -> None:
     user = await get_or_create_user(
         session=session,
         telegram_id=message.from_user.id,
@@ -231,14 +214,12 @@ async def show_my_requests(message: Message, session: AsyncSession, state: FSMCo
 
     if not requests:
         sent = await message.answer("У вас ще немає заявок. Оберіть категорію, щоб подати першу!", reply_markup=smart_menu_keyboard(message.from_user.id))
-        await track_message(state, sent.message_id)
         return
 
     sent = await message.answer(
         f"Ваші заявки ({len(requests)}):",
         reply_markup=user_requests_keyboard(requests),
     )
-    await track_message(state, sent.message_id)
 
 
 @router.callback_query(F.data.startswith("request:") & ~F.data.in_({"request:confirm", "request:cancel", "request:back_from_confirm"}))
@@ -298,23 +279,18 @@ async def show_request_detail(callback: CallbackQuery, session: AsyncSession, st
     else:
         sent = await callback.message.answer(text, parse_mode="HTML")
 
-    await track_message(state, sent.message_id)
     await callback.answer()
 
 
 @router.message(F.text == "📖 Довідка та інформація")
-async def show_info(message: Message, state: FSMContext, bot_instance: Bot) -> None:
-    await clear_chat(bot_instance, message.chat.id, state)
+async def show_info(message: Message, state: FSMContext) -> None:
     sent = await message.answer(INFO_TEXT, parse_mode="HTML", reply_markup=smart_menu_keyboard(message.from_user.id))
-    await track_message(state, sent.message_id)
 
 
 @router.message(F.text == "🏠 Меню")
-async def show_menu(message: Message, state: FSMContext, bot_instance: Bot) -> None:
+async def show_menu(message: Message, state: FSMContext) -> None:
     if _is_admin(message.from_user.id):
-        await clear_chat(bot_instance, message.chat.id, state)
         sent = await message.answer("Головне меню:", reply_markup=admin_menu_keyboard())
-        await track_message(state, sent.message_id)
         return
 
     fsm_data = await state.get_data()
@@ -334,35 +310,28 @@ async def show_menu(message: Message, state: FSMContext, bot_instance: Bot) -> N
         fsm_data["_is_draft"] = True
         await state.set_state(None)
         await state.set_data(fsm_data)
-        await clear_chat(bot_instance, message.chat.id, state)
         sent = await message.answer(
             "🏠 Ви повернулись до головного меню.\n📝 Незавершена заявка збережена як чернетка.",
             reply_markup=main_menu_with_draft_keyboard(),
         )
-        await track_message(state, sent.message_id)
         return
 
-    await clear_chat(bot_instance, message.chat.id, state)
     has_draft = bool(fsm_data.get("_is_draft")) and bool(fsm_data.get("category"))
     if has_draft:
         sent = await message.answer("Головне меню:", reply_markup=main_menu_with_draft_keyboard())
     else:
         sent = await message.answer("Головне меню:", reply_markup=smart_menu_keyboard(message.from_user.id))
-    await track_message(state, sent.message_id)
 
 
 @router.message(F.text == "✏️ Продовжити незавершену заявку")
-async def resume_draft(message: Message, state: FSMContext, bot_instance: Bot) -> None:
+async def resume_draft(message: Message, state: FSMContext) -> None:
     from aiogram.utils.keyboard import InlineKeyboardBuilder
 
     fsm_data = await state.get_data()
     if not fsm_data.get("_is_draft") or not fsm_data.get("category"):
-        await clear_chat(bot_instance, message.chat.id, state)
         sent = await message.answer("Незавершених заявок немає.", reply_markup=smart_menu_keyboard(message.from_user.id))
-        await track_message(state, sent.message_id)
         return
 
-    await clear_chat(bot_instance, message.chat.id, state)
 
     from bot.models.models import Category
     from bot.utils.formatters import CATEGORY_LABELS
@@ -385,8 +354,6 @@ async def resume_draft(message: Message, state: FSMContext, bot_instance: Bot) -
 
     sent1 = await message.answer(text, parse_mode="HTML", reply_markup=main_menu_with_draft_keyboard())
     sent2 = await message.answer("Оберіть дію:", reply_markup=builder.as_markup())
-    await track_message(state, sent1.message_id)
-    await track_message(state, sent2.message_id)
 
 
 @router.callback_query(F.data == "draft:delete")
@@ -394,7 +361,6 @@ async def draft_delete(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_reply_markup(reply_markup=None)
     sent = await callback.message.answer("🗑 Чернетку видалено.", reply_markup=smart_menu_keyboard(callback.from_user.id))
-    await track_message(state, sent.message_id)
     await callback.answer()
 
 
@@ -426,4 +392,3 @@ async def draft_continue(callback: CallbackQuery, state: FSMContext) -> None:
         await _show_confirmation(callback.message, state)
         return
 
-    await track_message(state, sent.message_id)
