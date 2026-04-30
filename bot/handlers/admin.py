@@ -22,6 +22,7 @@ from bot.services.export_service import ExportService
 from bot.services.request_service import RequestService
 from bot.services.stats_service import StatsService
 from bot.states import AdminCommentStates
+from bot.utils.chat_cleaner import clear_chat, track_message
 from bot.utils.formatters import CATEGORY_LABELS, STATUS_LABELS
 from bot.utils.maps import format_location
 
@@ -103,7 +104,12 @@ def _build_status_keyboard(req: Request, page: int = 0):
     return builder.as_markup()
 
 
-async def _send_requests_page(target: Message | CallbackQuery, session: AsyncSession, page: int) -> None:
+async def _send_requests_page(
+    target: Message | CallbackQuery,
+    session: AsyncSession,
+    page: int,
+    state: FSMContext | None = None,
+) -> None:
     all_requests = await get_requests_filtered(session)
     total = len(all_requests)
 
@@ -118,10 +124,17 @@ async def _send_requests_page(target: Message | CallbackQuery, session: AsyncSes
         kb = admin_requests_page_keyboard(chunk, page, total)
 
     if isinstance(target, CallbackQuery):
-        await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        try:
+            await target.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+        except Exception:
+            sent = await target.message.answer(text, parse_mode="HTML", reply_markup=kb)
+            if state:
+                await track_message(state, sent.message_id)
         await target.answer()
     else:
-        await target.answer(text, parse_mode="HTML", reply_markup=kb)
+        sent = await target.answer(text, parse_mode="HTML", reply_markup=kb)
+        if state:
+            await track_message(state, sent.message_id)
 
 
 # ---------------------------------------------------------------------------
@@ -129,19 +142,19 @@ async def _send_requests_page(target: Message | CallbackQuery, session: AsyncSes
 # ---------------------------------------------------------------------------
 
 @router.message(Command("requests"))
-async def cmd_requests(message: Message, session: AsyncSession) -> None:
+async def cmd_requests(message: Message, session: AsyncSession, state: FSMContext) -> None:
     if not message.from_user or not _is_admin(message.from_user.id):
         return
-    await _send_requests_page(message, session, page=0)
+    await _send_requests_page(message, session, page=0, state=state)
 
 
 @router.callback_query(F.data.startswith("admin_page:"))
-async def admin_page_callback(callback: CallbackQuery, session: AsyncSession) -> None:
+async def admin_page_callback(callback: CallbackQuery, session: AsyncSession, state: FSMContext) -> None:
     if not callback.from_user or not _is_admin(callback.from_user.id):
         await callback.answer("Немає доступу.", show_alert=True)
         return
     page = int(callback.data.split(":")[1])
-    await _send_requests_page(callback, session, page=page)
+    await _send_requests_page(callback, session, page=page, state=state)
 
 
 @router.callback_query(F.data == "noop")
@@ -266,7 +279,7 @@ async def admin_back_to_list(
     await state.update_data(admin_media_msg_ids=[])
 
     # Повертаємось на потрібну сторінку
-    await _send_requests_page(callback, session, page=page)
+    await _send_requests_page(callback, session, page=page, state=state)
 
 
 # ---------------------------------------------------------------------------

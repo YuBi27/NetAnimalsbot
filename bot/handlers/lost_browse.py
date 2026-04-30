@@ -14,6 +14,7 @@ from bot.config import settings
 from bot.keyboards.reply import main_menu_keyboard
 from bot.models.models import Category, MediaType, Request, Status, User
 from bot.repositories.request_repo import get_requests_filtered
+from bot.utils.chat_cleaner import clear_chat, track_message
 from bot.utils.formatters import format_location
 from bot.utils.maps import make_maps_link
 
@@ -39,9 +40,9 @@ def _format_lost_card(req: Request, index: int, total: int) -> str:
 
 
 @router.message(F.text == "🗺️ Переглянути загублених тварин")
-async def browse_lost_animals(message: Message, session: AsyncSession) -> None:
+async def browse_lost_animals(message: Message, session: AsyncSession, state: FSMContext) -> None:
     """Показує список активних заявок про загублених тварин."""
-    # Завантажуємо заявки з media одразу (eager load)
+    await clear_chat(message.bot, message.chat.id, state)
     from bot.models.models import Request as RequestModel
     result_new = await session.execute(
         select(RequestModel)
@@ -53,41 +54,40 @@ async def browse_lost_animals(message: Message, session: AsyncSession) -> None:
     all_lost = result_new.scalars().all()
 
     if not all_lost:
-        await message.answer(
+        sent = await message.answer(
             "🐾 Наразі немає активних заявок про загублених тварин.",
             reply_markup=main_menu_keyboard(),
         )
+        await track_message(state, sent.message_id)
         return
 
-    await message.answer(
+    sent = await message.answer(
         f"🔍 <b>Загублені тварини</b> — знайдено {len(all_lost)} активних заявок.\n\n"
         f"Перегляньте їх нижче. Якщо впізнали тварину — натисніть кнопку під фото.",
         parse_mode="HTML",
     )
+    await track_message(state, sent.message_id)
 
     for i, req in enumerate(all_lost, 1):
         text = _format_lost_card(req, i, len(all_lost))
         kb = _lost_card_keyboard(req.id)
-
-        # Шукаємо перше фото
-        photo_media = next(
-            (m for m in req.media if m.type == MediaType.PHOTO), None
-        )
-
+        photo_media = next((m for m in req.media if m.type == MediaType.PHOTO), None)
         try:
             if photo_media:
-                await message.answer_photo(
+                sent = await message.answer_photo(
                     photo=photo_media.file_id,
                     caption=text,
                     parse_mode="HTML",
                     reply_markup=kb,
                 )
             else:
-                await message.answer(text, parse_mode="HTML", reply_markup=kb)
+                sent = await message.answer(text, parse_mode="HTML", reply_markup=kb)
+            await track_message(state, sent.message_id)
         except Exception as exc:
             logger.warning("Failed to send lost animal card #%s: %s", req.id, exc)
 
-    await message.answer("Це всі активні заявки.", reply_markup=main_menu_keyboard())
+    sent = await message.answer("Це всі активні заявки.", reply_markup=main_menu_keyboard())
+    await track_message(state, sent.message_id)
 
 
 def _format_sterilized_card(req: Request, index: int, total: int) -> str:
@@ -104,13 +104,16 @@ def _format_sterilized_card(req: Request, index: int, total: int) -> str:
 
 
 @router.message(F.text == "🏷️ Стерилізовані тварини")
-async def browse_sterilized_animals(message: Message, session: AsyncSession) -> None:
+async def browse_sterilized_animals(message: Message, session: AsyncSession, state: FSMContext) -> None:
     """Показує список тварин що пройшли стерилізацію (статус DONE) — тільки для адміна."""
     from bot.keyboards.reply import admin_menu_keyboard
 
     if message.from_user.id not in settings.all_admin_ids:
         await message.answer("⛔️ Цей розділ доступний лише адміністратору.")
         return
+
+    await clear_chat(message.bot, message.chat.id, state)
+
     from bot.models.models import Request as RequestModel
     result = await session.execute(
         select(RequestModel)
@@ -122,38 +125,38 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession) -> 
     all_sterilized = result.scalars().all()
 
     if not all_sterilized:
-        await message.answer(
+        sent = await message.answer(
             "✂️ Наразі немає записів про стерилізованих тварин.",
             reply_markup=admin_menu_keyboard(),
         )
+        await track_message(state, sent.message_id)
         return
 
-    await message.answer(
+    sent = await message.answer(
         f"✂️ <b>Стерилізовані тварини</b> — знайдено {len(all_sterilized)} записів.\n\n"
         f"Перегляньте їх нижче.",
         parse_mode="HTML",
     )
+    await track_message(state, sent.message_id)
 
     for i, req in enumerate(all_sterilized, 1):
         text = _format_sterilized_card(req, i, len(all_sterilized))
-
-        photo_media = next(
-            (m for m in req.media if m.type == MediaType.PHOTO), None
-        )
-
+        photo_media = next((m for m in req.media if m.type == MediaType.PHOTO), None)
         try:
             if photo_media:
-                await message.answer_photo(
+                sent = await message.answer_photo(
                     photo=photo_media.file_id,
                     caption=text,
                     parse_mode="HTML",
                 )
             else:
-                await message.answer(text, parse_mode="HTML")
+                sent = await message.answer(text, parse_mode="HTML")
+            await track_message(state, sent.message_id)
         except Exception as exc:
             logger.warning("Failed to send sterilized animal card #%s: %s", req.id, exc)
 
-    await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=admin_menu_keyboard())
+    sent = await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=admin_menu_keyboard())
+    await track_message(state, sent.message_id)
 
 
 @router.callback_query(F.data.startswith("found:"))
