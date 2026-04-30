@@ -82,12 +82,22 @@ def _build_status_keyboard(req: Request, page: int = 0):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     allowed = ALLOWED_TRANSITIONS.get(req.status, set())
+
+    # AWAITING_FEEDBACK — тільки для самостійної стерилізації
+    is_self_sterilization = (
+        req.category == Category.STERILIZATION
+        and req.description.startswith("[САМОСТІЙНА СТЕРИЛІЗАЦІЯ]")
+    )
+
     for st_enum in [Status.IN_PROGRESS, Status.AWAITING_FEEDBACK, Status.DONE, Status.REJECTED]:
-        if st_enum in allowed:
-            builder.button(
-                text=_STATUS_LABELS_MAP[st_enum],
-                callback_data=f"status:{_STATUS_KEYS_MAP[st_enum]}:{req.id}",
-            )
+        if st_enum not in allowed:
+            continue
+        if st_enum == Status.AWAITING_FEEDBACK and not is_self_sterilization:
+            continue
+        builder.button(
+            text=_STATUS_LABELS_MAP[st_enum],
+            callback_data=f"status:{_STATUS_KEYS_MAP[st_enum]}:{req.id}",
+        )
     builder.button(text="◀️ До списку", callback_data=f"admin_back:{page}")
     builder.adjust(1)
     return builder.as_markup()
