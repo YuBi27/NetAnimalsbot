@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards.inline import admin_request_keyboard
-from bot.keyboards.reply import contact_keyboard, main_menu_keyboard
+from bot.keyboards.reply import contact_keyboard, main_menu_keyboard, smart_menu_keyboard
 from bot.middlewares.throttle import increment_spam_counter
 from bot.models.models import Category
 from bot.repositories.user_repo import get_or_create_user
@@ -308,7 +308,7 @@ async def back_from_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 )
 async def cancel_request_reply(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("❌ Заявку скасовано.", reply_markup=main_menu_keyboard())
+    await message.answer("❌ Заявку скасовано.", reply_markup=smart_menu_keyboard(message.from_user.id))
 
 
 @router.callback_query(F.data == "request:cancel")
@@ -318,7 +318,7 @@ async def cancel_request(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer("❌ Заявку скасовано.", reply_markup=main_menu_keyboard())
+    await callback.message.answer("❌ Заявку скасовано.", reply_markup=smart_menu_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -403,7 +403,7 @@ async def confirm_request(
 
     await callback.message.answer(
         f"✅ Заявку <b>#{req.id}</b> успішно подано!\nМи розглянемо її найближчим часом.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=smart_menu_keyboard(message.from_user.id),
         parse_mode="HTML",
     )
     await callback.answer()

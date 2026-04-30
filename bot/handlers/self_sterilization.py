@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards.inline import admin_request_keyboard
-from bot.keyboards.reply import main_menu_keyboard
+from bot.keyboards.reply import main_menu_keyboard, smart_menu_keyboard
 from bot.models.models import Category, MediaType, Status
 from bot.repositories.media_repo import add_media
 from bot.repositories.request_repo import get_request_by_id
@@ -232,7 +232,7 @@ async def cancel_self_sterilization(callback: CallbackQuery, state: FSMContext) 
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer("❌ Заявку скасовано.", reply_markup=main_menu_keyboard())
+    await callback.message.answer("❌ Заявку скасовано.", reply_markup=smart_menu_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -303,7 +303,7 @@ async def confirm_self_sterilization(
     await callback.message.answer(
         f"✅ Заявку <b>#{req.id}</b> на самостійну стерилізацію подано!\n\n"
         "Очікуйте погодження від адміністратора. Після погодження ви зможете надати фідбек після завершення процедури.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=smart_menu_keyboard(message.from_user.id),
         parse_mode="HTML",
     )
     await callback.answer()
@@ -486,7 +486,7 @@ async def cancel_feedback(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer("❌ Фідбек скасовано.", reply_markup=main_menu_keyboard())
+    await callback.message.answer("❌ Фідбек скасовано.", reply_markup=smart_menu_keyboard(callback.from_user.id))
     await callback.answer()
 
 
@@ -564,7 +564,7 @@ async def confirm_feedback(
 
     await callback.message.answer(
         f"✅ Дякуємо за фідбек!\n\nЗаявку <b>#{req.id}</b> закрито. Інформація про стерилізацію збережена.",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=smart_menu_keyboard(message.from_user.id),
         parse_mode="HTML",
     )
     await callback.answer()
@@ -577,4 +577,4 @@ async def confirm_feedback(
 @router.message(F.text == "❌ Скасувати")
 async def cancel_any(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("❌ Дію скасовано.", reply_markup=main_menu_keyboard())
+    await message.answer("❌ Дію скасовано.", reply_markup=smart_menu_keyboard(message.from_user.id))

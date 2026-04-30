@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards.inline import user_requests_keyboard
-from bot.keyboards.reply import admin_menu_keyboard, main_menu_keyboard, main_menu_with_draft_keyboard
+from bot.keyboards.reply import admin_menu_keyboard, main_menu_keyboard, main_menu_with_draft_keyboard, smart_menu_keyboard
 from bot.repositories.request_repo import get_request_by_id, get_user_requests
 from bot.repositories.user_repo import get_or_create_user
 from bot.utils.chat_cleaner import clear_chat, track_message
@@ -101,7 +101,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext, 
     else:
         sent = await message.answer(
             f"Привіт, {name}! 👋\n\nЯ бот для волонтерів — допомагаю збирати заявки про тварин.\nОберіть дію у меню нижче:",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=smart_menu_keyboard(message.from_user.id),
         )
     await track_message(state, sent.message_id)
 
@@ -347,7 +347,7 @@ async def show_menu(message: Message, state: FSMContext, bot_instance: Bot) -> N
     if has_draft:
         sent = await message.answer("Головне меню:", reply_markup=main_menu_with_draft_keyboard())
     else:
-        sent = await message.answer("Головне меню:", reply_markup=main_menu_keyboard())
+        sent = await message.answer("Головне меню:", reply_markup=smart_menu_keyboard(message.from_user.id))
     await track_message(state, sent.message_id)
 
 
@@ -358,7 +358,7 @@ async def resume_draft(message: Message, state: FSMContext, bot_instance: Bot) -
     fsm_data = await state.get_data()
     if not fsm_data.get("_is_draft") or not fsm_data.get("category"):
         await clear_chat(bot_instance, message.chat.id, state)
-        sent = await message.answer("Незавершених заявок немає.", reply_markup=main_menu_keyboard())
+        sent = await message.answer("Незавершених заявок немає.", reply_markup=smart_menu_keyboard(message.from_user.id))
         await track_message(state, sent.message_id)
         return
 
@@ -393,7 +393,7 @@ async def resume_draft(message: Message, state: FSMContext, bot_instance: Bot) -
 async def draft_delete(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
     await callback.message.edit_reply_markup(reply_markup=None)
-    sent = await callback.message.answer("🗑 Чернетку видалено.", reply_markup=main_menu_keyboard())
+    sent = await callback.message.answer("🗑 Чернетку видалено.", reply_markup=smart_menu_keyboard(callback.from_user.id))
     await track_message(state, sent.message_id)
     await callback.answer()
 

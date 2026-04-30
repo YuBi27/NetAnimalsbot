@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards.reply import main_menu_keyboard
+from bot.keyboards.reply import main_menu_keyboard, smart_menu_keyboard
 from bot.models.models import Category, MediaType, Request, Status, User
 from bot.repositories.request_repo import get_requests_filtered
 from bot.utils.chat_cleaner import clear_chat, track_message
@@ -56,7 +56,7 @@ async def browse_lost_animals(message: Message, session: AsyncSession, state: FS
     if not all_lost:
         sent = await message.answer(
             "🐾 Наразі немає активних заявок про загублених тварин.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=smart_menu_keyboard(message.from_user.id),
         )
         await track_message(state, sent.message_id)
         return
@@ -86,7 +86,7 @@ async def browse_lost_animals(message: Message, session: AsyncSession, state: FS
         except Exception as exc:
             logger.warning("Failed to send lost animal card #%s: %s", req.id, exc)
 
-    sent = await message.answer("Це всі активні заявки.", reply_markup=main_menu_keyboard())
+    sent = await message.answer("Це всі активні заявки.", reply_markup=smart_menu_keyboard(message.from_user.id))
     await track_message(state, sent.message_id)
 
 
@@ -205,5 +205,5 @@ async def report_found_animal(
         "✅ <b>Дякуємо за повідомлення!</b>\n\n"
         "Адміністратор зв'яжеться з вами найближчим часом для уточнення деталей.",
         parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=smart_menu_keyboard(message.from_user.id),
     )

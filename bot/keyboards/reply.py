@@ -113,3 +113,11 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text="🏷️ Стерилізовані тварини"),
     )
     return builder.as_markup(resize_keyboard=True)
+
+
+def smart_menu_keyboard(telegram_id: int) -> ReplyKeyboardMarkup:
+    """Повертає адмінське або користувацьке меню залежно від ID."""
+    from bot.config import settings
+    if telegram_id in settings.all_admin_ids:
+        return admin_menu_keyboard()
+    return main_menu_keyboard()

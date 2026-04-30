@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards.reply import main_menu_keyboard
+from bot.keyboards.reply import main_menu_keyboard, smart_menu_keyboard
 from bot.models.models import BiteReport
 from bot.repositories.user_repo import get_or_create_user
 from bot.states import BiteReportStates
@@ -83,7 +83,7 @@ async def start_bite_report(message: Message, state: FSMContext) -> None:
 @router.message(BiteReportStates.waiting_contact, F.text == "❌ Скасувати")
 async def cancel_bite_report(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Звіт скасовано.", reply_markup=main_menu_keyboard())
+    await message.answer("Звіт скасовано.", reply_markup=smart_menu_keyboard(message.from_user.id))
 
 
 @router.message(BiteReportStates.waiting_date, F.text)
@@ -194,5 +194,5 @@ async def _save_bite_report(
         "⚠️ <b>Нагадуємо:</b> зверніться до лікаря якомога швидше!\n"
         "📞 Екстрена допомога: <b>103</b>",
         parse_mode="HTML",
-        reply_markup=main_menu_keyboard(),
+        reply_markup=smart_menu_keyboard(message.from_user.id),
     )
