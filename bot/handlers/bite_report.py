@@ -61,7 +61,7 @@ def _contact_keyboard() -> ReplyKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-@router.message(F.text == "🦷 Мене вкусила тварина")
+@router.message(F.text == "🩸 Мене вкусила тварина")
 async def start_bite_report(message: Message, state: FSMContext) -> None:
     """Початок FSM звіту про укус."""
     # Спочатку надсилаємо важливу інформацію
@@ -178,14 +178,15 @@ async def _save_bite_report(
         f"<b>Контакт постраждалого:</b> {contact}\n"
         f"<b>Telegram:</b> {finder_info}"
     )
-    try:
-        await bot_instance.send_message(
-            chat_id=settings.ADMIN_ID,
-            text=admin_text,
-            parse_mode="HTML",
-        )
-    except Exception as exc:
-        logger.error("Failed to notify admin about bite: %s", exc)
+    for admin_id in settings.all_admin_ids:
+        try:
+            await bot_instance.send_message(
+                chat_id=admin_id,
+                text=admin_text,
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            logger.error("Failed to notify admin %s about bite: %s", admin_id, exc)
 
     await message.answer(
         "✅ <b>Звіт збережено!</b>\n\n"

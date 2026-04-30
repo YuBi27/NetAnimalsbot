@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from bot.config import settings
-from bot.handlers import admin, bite_report, broadcast, lost_browse, request, user
+from bot.handlers import admin, bite_report, broadcast, lost_browse, request, self_sterilization, user
 from bot.middlewares.throttle import ThrottleMiddleware
 from bot.models.models import create_tables
 
@@ -77,6 +77,7 @@ def _build_dispatcher(
 
     dp.include_router(user.router)
     dp.include_router(request.router)
+    dp.include_router(self_sterilization.router)
     dp.include_router(lost_browse.router)
     dp.include_router(bite_report.router)
     dp.include_router(admin.router)

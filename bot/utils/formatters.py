@@ -5,17 +5,18 @@ from bot.utils.maps import format_location
 
 # Людиночитані назви категорій
 CATEGORY_LABELS: dict[Category, str] = {
-    Category.LOST: "🐕 Загублена тварина",
-    Category.INJURED: "🩹 Поранена або хвора тварина",
-    Category.STERILIZATION: "✂️ Стерилізація",
-    Category.AGGRESSIVE: "⚠️ Агресивна тварина",
-    Category.DEAD: "💀 Мертва тварина",
+    Category.LOST: "🐾 Загублена тварина",
+    Category.INJURED: "🚑 Поранена або хвора тварина",
+    Category.STERILIZATION: "💉 Стерилізація",
+    Category.AGGRESSIVE: "🐺 Агресивна тварина",
+    Category.DEAD: "🪦 Мертва тварина",
 }
 
 # Людиночитані назви статусів
 STATUS_LABELS: dict[Status, str] = {
     Status.NEW: "🆕 Нова",
     Status.IN_PROGRESS: "🔄 В роботі",
+    Status.AWAITING_FEEDBACK: "⏳ Очікує фідбек",
     Status.DONE: "✅ Виконано",
     Status.REJECTED: "❌ Відхилено",
 }

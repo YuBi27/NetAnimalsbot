@@ -3,9 +3,11 @@ import csv
 import io
 from datetime import datetime
 
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.models.models import Category, Status
+from bot.models.models import Category, Media, MediaType, Request, Status
 from bot.repositories.request_repo import get_requests_filtered
 
 # Columns included in every export
@@ -19,6 +21,9 @@ COLUMNS = [
     "longitude",
     "address_text",
     "contact",
+    "admin_comment",
+    "photos",
+    "videos",
 ]
 
 
@@ -48,8 +53,10 @@ def _parse_filters(filters: dict | None) -> dict:
     return kwargs
 
 
-def _row(request) -> list:
+def _row(request: Request) -> list:
     """Extract a list of values in COLUMNS order from a Request ORM object."""
+    photos = [m.file_id for m in request.media if m.type == MediaType.PHOTO]
+    videos = [m.file_id for m in request.media if m.type == MediaType.VIDEO]
     return [
         request.id,
         request.category.value if request.category else "",
@@ -60,7 +67,26 @@ def _row(request) -> list:
         request.longitude,
         request.address_text or "",
         request.contact or "",
+        request.admin_comment or "",
+        "; ".join(photos),
+        "; ".join(videos),
     ]
+
+
+async def _get_requests_with_media(session: AsyncSession, **filters) -> list[Request]:
+    """Fetch requests with media eagerly loaded."""
+    base_requests = await get_requests_filtered(session, **filters)
+    if not base_requests:
+        return []
+
+    request_ids = [r.id for r in base_requests]
+    result = await session.execute(
+        select(Request)
+        .options(selectinload(Request.media))
+        .where(Request.id.in_(request_ids))
+        .order_by(Request.created_at.desc())
+    )
+    return list(result.scalars().all())
 
 
 class ExportService:
@@ -69,7 +95,7 @@ class ExportService:
 
     async def export_csv(self, filters: dict | None = None) -> bytes:
         """Return CSV-encoded bytes for all requests matching *filters*."""
-        requests = await get_requests_filtered(self._session, **_parse_filters(filters))
+        requests = await _get_requests_with_media(self._session, **_parse_filters(filters))
 
         buf = io.StringIO()
         writer = csv.writer(buf)
@@ -86,7 +112,7 @@ class ExportService:
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError("openpyxl is required for XLSX export") from exc
 
-        requests = await get_requests_filtered(self._session, **_parse_filters(filters))
+        requests = await _get_requests_with_media(self._session, **_parse_filters(filters))
 
         wb = openpyxl.Workbook()
         ws = wb.active

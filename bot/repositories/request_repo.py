@@ -39,9 +39,12 @@ async def get_request_by_id(
     session: AsyncSession,
     request_id: int,
 ) -> Request | None:
-    """Return a Request by its primary key, or None if not found."""
+    """Return a Request by its primary key (with media eagerly loaded), or None if not found."""
+    from sqlalchemy.orm import selectinload
     result = await session.execute(
-        select(Request).where(Request.id == request_id)
+        select(Request)
+        .options(selectinload(Request.media))
+        .where(Request.id == request_id)
     )
     return result.scalar_one_or_none()
 

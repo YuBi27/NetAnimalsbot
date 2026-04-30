@@ -38,7 +38,7 @@ def _format_lost_card(req: Request, index: int, total: int) -> str:
     )
 
 
-@router.message(F.text == "🔍 Переглянути загублених тварин")
+@router.message(F.text == "🗺️ Переглянути загублених тварин")
 async def browse_lost_animals(message: Message, session: AsyncSession) -> None:
     """Показує список активних заявок про загублених тварин."""
     # Завантажуємо заявки з media одразу (eager load)
@@ -90,6 +90,67 @@ async def browse_lost_animals(message: Message, session: AsyncSession) -> None:
     await message.answer("Це всі активні заявки.", reply_markup=main_menu_keyboard())
 
 
+def _format_sterilized_card(req: Request, index: int, total: int) -> str:
+    location = format_location(req.latitude, req.longitude, req.address_text)
+    created = req.created_at.strftime("%d.%m.%Y") if req.created_at else "—"
+    comment = f"\n💬 <b>Коментар:</b> {req.admin_comment}" if req.admin_comment else ""
+    return (
+        f"✂️ <b>Стерилізована тварина #{req.id}</b> ({index}/{total})\n\n"
+        f"<b>Опис:</b> {req.description}\n"
+        f"<b>Місце:</b> {location}\n"
+        f"<b>Дата:</b> {created}"
+        f"{comment}"
+    )
+
+
+@router.message(F.text == "🏷️ Стерилізовані тварини")
+async def browse_sterilized_animals(message: Message, session: AsyncSession) -> None:
+    """Показує список тварин що пройшли стерилізацію (статус DONE)."""
+    from bot.models.models import Request as RequestModel
+    result = await session.execute(
+        select(RequestModel)
+        .options(selectinload(RequestModel.media))
+        .where(RequestModel.category == Category.STERILIZATION)
+        .where(RequestModel.status == Status.DONE)
+        .order_by(RequestModel.created_at.desc())
+    )
+    all_sterilized = result.scalars().all()
+
+    if not all_sterilized:
+        await message.answer(
+            "✂️ Наразі немає записів про стерилізованих тварин.",
+            reply_markup=main_menu_keyboard(),
+        )
+        return
+
+    await message.answer(
+        f"✂️ <b>Стерилізовані тварини</b> — знайдено {len(all_sterilized)} записів.\n\n"
+        f"Перегляньте їх нижче.",
+        parse_mode="HTML",
+    )
+
+    for i, req in enumerate(all_sterilized, 1):
+        text = _format_sterilized_card(req, i, len(all_sterilized))
+
+        photo_media = next(
+            (m for m in req.media if m.type == MediaType.PHOTO), None
+        )
+
+        try:
+            if photo_media:
+                await message.answer_photo(
+                    photo=photo_media.file_id,
+                    caption=text,
+                    parse_mode="HTML",
+                )
+            else:
+                await message.answer(text, parse_mode="HTML")
+        except Exception as exc:
+            logger.warning("Failed to send sterilized animal card #%s: %s", req.id, exc)
+
+    await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=main_menu_keyboard())
+
+
 @router.callback_query(F.data.startswith("found:"))
 async def report_found_animal(
     callback: CallbackQuery,
@@ -121,14 +182,15 @@ async def report_found_animal(
         f"<b>Telegram ID:</b> {finder.id}"
     )
 
-    try:
-        await bot_instance.send_message(
-            chat_id=settings.ADMIN_ID,
-            text=admin_text,
-            parse_mode="HTML",
-        )
-    except Exception as exc:
-        logger.error("Failed to notify admin about found animal: %s", exc)
+    for admin_id in settings.all_admin_ids:
+        try:
+            await bot_instance.send_message(
+                chat_id=admin_id,
+                text=admin_text,
+                parse_mode="HTML",
+            )
+        except Exception as exc:
+            logger.error("Failed to notify admin %s about found animal: %s", admin_id, exc)
 
     await callback.answer("✅ Дякуємо! Адміністратор отримав ваше повідомлення.", show_alert=True)
     await callback.message.answer(

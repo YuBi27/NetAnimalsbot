@@ -20,16 +20,17 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 INFO_TEXT = (
-    "ℹ️ <b>Нетішин Animals Bot — довідка</b>\n\n"
+    "📖 <b>Нетішин Animals Bot — довідка</b>\n\n"
     "Цей бот допомагає волонтерам міста Нетішин збирати та обробляти заявки про тварин, "
     "які потребують допомоги.\n\n"
     "━━━━━━━━━━━━━━━━━━━━\n"
     "🐾 <b>Як подати заявку?</b>\n\n"
     "1️⃣ Оберіть категорію у головному меню:\n"
     "   • 🐾 <b>Загублена тварина</b> — знайшли або загубили тварину\n"
-    "   • 🩹 <b>Поранена тварина</b> — тварина потребує медичної допомоги\n"
-    "   • ✂️ <b>Стерилізація</b> — запит на стерилізацію безпритульної тварини\n"
-    "   • ☠️ <b>Мертва тварина</b> — виявлено загиблу тварину на вулиці\n\n"
+    "   • 🚑 <b>Поранена тварина</b> — тварина потребує медичної допомоги\n"
+    "   • 💉 <b>Стерилізація</b> — запит на стерилізацію безпритульної тварини\n"
+    "   • 🪦 <b>Мертва тварина</b> — виявлено загиблу тварину на вулиці\n"
+    "   • 🔬 <b>Стерилізую самостійно</b> — самостійна стерилізація з погодженням\n\n"
     "2️⃣ <b>Вкажіть місце</b> — поділіться геолокацією або введіть адресу текстом\n\n"
     "3️⃣ <b>Опишіть ситуацію</b> — мінімум 10 символів. Чим детальніше — тим краще:\n"
     "   порода, колір, особливі прикмети, стан тварини\n\n"
@@ -37,10 +38,11 @@ INFO_TEXT = (
     "5️⃣ <b>Вкажіть контакт</b> — поділіться номером телефону або введіть @username\n\n"
     "6️⃣ <b>Перевірте та відправте</b> заявку\n\n"
     "━━━━━━━━━━━━━━━━━━━━\n"
-    "📋 <b>Мої заявки</b>\n\n"
+    "🗂️ <b>Мої заявки</b>\n\n"
     "Тут ви можете переглянути всі свої заявки та їх поточний статус:\n"
     "   • 🆕 <b>Нова</b> — заявку отримано, очікує розгляду\n"
     "   • 🔄 <b>В роботі</b> — волонтер вже займається вашою заявкою\n"
+    "   • ⏳ <b>Очікує фідбек</b> — стерилізацію погоджено, чекаємо вашого звіту\n"
     "   • ✅ <b>Виконано</b> — питання вирішено\n"
     "   • ❌ <b>Відхилено</b> — заявку відхилено (причина буде вказана)\n\n"
     "━━━━━━━━━━━━━━━━━━━━\n"
@@ -61,7 +63,7 @@ INFO_TEXT = (
 
 
 def _is_admin(telegram_id: int) -> bool:
-    return telegram_id == settings.ADMIN_ID
+    return telegram_id in settings.all_admin_ids
 
 
 @router.message(CommandStart())
@@ -103,7 +105,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
 # Адмін-кнопки меню — делегуємо до відповідних команд
 # ---------------------------------------------------------------------------
 
-@router.message(F.text == "📋 Всі заявки")
+@router.message(F.text == "📑 Всі заявки")
 async def admin_btn_requests(message: Message, session: AsyncSession) -> None:
     if not _is_admin(message.from_user.id):
         return
@@ -111,7 +113,7 @@ async def admin_btn_requests(message: Message, session: AsyncSession) -> None:
     await _send_requests_page(message, session, page=0)
 
 
-@router.message(F.text == "📊 Статистика")
+@router.message(F.text == "📈 Статистика")
 async def admin_btn_stats(message: Message, session: AsyncSession) -> None:
     if not _is_admin(message.from_user.id):
         return
@@ -138,7 +140,7 @@ async def admin_btn_stats(message: Message, session: AsyncSession) -> None:
     await message.answer(text, parse_mode="HTML")
 
 
-@router.message(F.text == "📤 Експорт")
+@router.message(F.text == "💾 Експорт")
 async def admin_btn_export(message: Message) -> None:
     if not _is_admin(message.from_user.id):
         return
@@ -146,7 +148,7 @@ async def admin_btn_export(message: Message) -> None:
     await message.answer("Оберіть формат для експорту заявок:", reply_markup=export_format_keyboard())
 
 
-@router.message(F.text == "📢 Розсилка")
+@router.message(F.text == "📣 Розсилка")
 async def admin_btn_broadcast(message: Message, state: FSMContext) -> None:
     if not _is_admin(message.from_user.id):
         return
@@ -170,7 +172,7 @@ async def admin_btn_broadcast(message: Message, state: FSMContext) -> None:
 # Звичайні користувацькі хендлери
 # ---------------------------------------------------------------------------
 
-@router.message(F.text == "🚨 Звіти про укуси")
+@router.message(F.text == "🩺 Звіти про укуси")
 async def admin_btn_bites(message: Message, session: AsyncSession) -> None:
     if not _is_admin(message.from_user.id):
         return
@@ -200,7 +202,7 @@ async def admin_btn_bites(message: Message, session: AsyncSession) -> None:
     await message.answer("Це останні 20 звітів.", reply_markup=admin_menu_keyboard())
 
 
-@router.message(F.text == "📋 Мої заявки")
+@router.message(F.text == "🗂️ Мої заявки")
 async def show_my_requests(message: Message, session: AsyncSession) -> None:
     user = await get_or_create_user(
         session=session,
@@ -253,11 +255,27 @@ async def show_request_detail(callback: CallbackQuery, session: AsyncSession) ->
         f"<b>Дата:</b> {created_at}"
     )
 
-    await callback.message.answer(text, parse_mode="HTML")
+    if req.admin_comment:
+        text += f"\n\n💬 <b>Коментар адміна:</b> {req.admin_comment}"
+
+    from bot.models.models import Status as StatusEnum
+    if req.status == StatusEnum.AWAITING_FEEDBACK:
+        text += (
+            "\n\n⏳ <b>Очікується ваш фідбек!</b>\n"
+            "Після завершення стерилізації натисніть кнопку нижче."
+        )
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📝 Надати фідбек", callback_data=f"provide_feedback:{req.id}")
+        builder.adjust(1)
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=builder.as_markup())
+    else:
+        await callback.message.answer(text, parse_mode="HTML")
+
     await callback.answer()
 
 
-@router.message(F.text == "ℹ️ Довідка та інформація")
+@router.message(F.text == "📖 Довідка та інформація")
 async def show_info(message: Message) -> None:
     await message.answer(INFO_TEXT, parse_mode="HTML")
 
@@ -302,7 +320,7 @@ async def show_menu(message: Message, state: FSMContext) -> None:
         await message.answer("Головне меню:", reply_markup=main_menu_keyboard())
 
 
-@router.message(F.text == "📝 Продовжити незавершену заявку")
+@router.message(F.text == "✏️ Продовжити незавершену заявку")
 async def resume_draft(message: Message, state: FSMContext) -> None:
     """Пропонує продовжити або видалити чернетку."""
     from aiogram.utils.keyboard import InlineKeyboardBuilder

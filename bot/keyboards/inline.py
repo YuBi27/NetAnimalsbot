@@ -63,19 +63,30 @@ def admin_requests_page_keyboard(
             callback_data=f"admin_req:{req.id}",
         )
 
-    # Навігація
+    # Навігація — красива пагінація
     total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
-    nav = []
-    if page > 0:
-        nav.append(("◀️ Назад", f"admin_page:{page - 1}"))
-    nav.append((f"{page + 1}/{total_pages}", "noop"))
-    if (page + 1) * PAGE_SIZE < total:
-        nav.append(("Вперед ▶️", f"admin_page:{page + 1}"))
+    has_prev = page > 0
+    has_next = (page + 1) * PAGE_SIZE < total
 
-    for text, cb in nav:
-        builder.button(text=text, callback_data=cb)
+    if total_pages > 1:
+        # Рядок з кнопками навігації
+        if has_prev and has_next:
+            builder.button(text="◀️", callback_data=f"admin_page:{page - 1}")
+            builder.button(text=f"· {page + 1} / {total_pages} ·", callback_data="noop")
+            builder.button(text="▶️", callback_data=f"admin_page:{page + 1}")
+            # Останній рядок — 3 кнопки навігації
+            builder.adjust(*([1] * len(requests)), 3)
+        elif has_prev:
+            builder.button(text="◀️ Назад", callback_data=f"admin_page:{page - 1}")
+            builder.button(text=f"· {page + 1} / {total_pages} ·", callback_data="noop")
+            builder.adjust(*([1] * len(requests)), 2)
+        else:
+            builder.button(text=f"· {page + 1} / {total_pages} ·", callback_data="noop")
+            builder.button(text="▶️ Вперед", callback_data=f"admin_page:{page + 1}")
+            builder.adjust(*([1] * len(requests)), 2)
+    else:
+        builder.adjust(1)
 
-    builder.adjust(1, len(nav))
     return builder.as_markup()
 
 

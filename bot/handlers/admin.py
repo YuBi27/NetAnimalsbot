@@ -7,6 +7,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
@@ -15,7 +16,7 @@ from bot.keyboards.inline import (
     admin_requests_page_keyboard,
     export_format_keyboard,
 )
-from bot.models.models import ALLOWED_TRANSITIONS, Category, Request, Status, User
+from bot.models.models import ALLOWED_TRANSITIONS, Category, Media, MediaType, Request, Status, User
 from bot.repositories.request_repo import get_request_by_id, get_requests_filtered
 from bot.services.export_service import ExportService
 from bot.services.request_service import RequestService
@@ -33,24 +34,27 @@ _COMMENT_REQUIRED = {Status.DONE, Status.REJECTED}
 
 _STATUS_MAP: dict[str, Status] = {
     "in_progress": Status.IN_PROGRESS,
+    "awaiting_feedback": Status.AWAITING_FEEDBACK,
     "done": Status.DONE,
     "rejected": Status.REJECTED,
 }
 
 _STATUS_LABELS_MAP = {
     Status.IN_PROGRESS: "🔄 Взяти в роботу",
+    Status.AWAITING_FEEDBACK: "⏳ Очікує фідбек",
     Status.DONE: "✅ Закрити",
     Status.REJECTED: "❌ Відхилити",
 }
 _STATUS_KEYS_MAP = {
     Status.IN_PROGRESS: "in_progress",
+    Status.AWAITING_FEEDBACK: "awaiting_feedback",
     Status.DONE: "done",
     Status.REJECTED: "rejected",
 }
 
 
 def _is_admin(telegram_id: int) -> bool:
-    return telegram_id == settings.ADMIN_ID
+    return telegram_id in settings.all_admin_ids
 
 
 def _build_request_text(req: Request) -> str:
@@ -60,6 +64,7 @@ def _build_request_text(req: Request) -> str:
     created = req.created_at.strftime("%d.%m.%Y %H:%M") if req.created_at else "—"
     contact = req.contact or "Не вказано"
     comment = f"\n<b>Коментар адміна:</b> {req.admin_comment}" if req.admin_comment else ""
+    feedback = f"\n<b>Фідбек користувача:</b> {req.feedback_text}" if getattr(req, "feedback_text", None) else ""
     return (
         f"📋 <b>Заявка #{req.id}</b>\n\n"
         f"<b>Категорія:</b> {cat}\n"
@@ -69,6 +74,7 @@ def _build_request_text(req: Request) -> str:
         f"<b>Контакт:</b> {contact}\n"
         f"<b>Дата:</b> {created}"
         f"{comment}"
+        f"{feedback}"
     )
 
 
@@ -76,7 +82,7 @@ def _build_status_keyboard(req: Request):
     from aiogram.utils.keyboard import InlineKeyboardBuilder
     builder = InlineKeyboardBuilder()
     allowed = ALLOWED_TRANSITIONS.get(req.status, set())
-    for st_enum in [Status.IN_PROGRESS, Status.DONE, Status.REJECTED]:
+    for st_enum in [Status.IN_PROGRESS, Status.AWAITING_FEEDBACK, Status.DONE, Status.REJECTED]:
         if st_enum in allowed:
             builder.button(
                 text=_STATUS_LABELS_MAP[st_enum],
@@ -97,7 +103,8 @@ async def _send_requests_page(target: Message | CallbackQuery, session: AsyncSes
     else:
         start = page * PAGE_SIZE
         chunk = all_requests[start: start + PAGE_SIZE]
-        text = f"📋 <b>Заявки ({total})</b> — сторінка {page + 1}/{(total + PAGE_SIZE - 1) // PAGE_SIZE}"
+        total_pages = (total + PAGE_SIZE - 1) // PAGE_SIZE
+        text = f"📋 <b>Заявки ({total})</b> — сторінка {page + 1}/{total_pages}"
         kb = admin_requests_page_keyboard(chunk, page, total)
 
     if isinstance(target, CallbackQuery):
@@ -133,7 +140,7 @@ async def noop_callback(callback: CallbackQuery) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Детальний перегляд заявки
+# Детальний перегляд заявки (з фото)
 # ---------------------------------------------------------------------------
 
 @router.callback_query(F.data.startswith("admin_req:"))
@@ -143,16 +150,50 @@ async def admin_view_request(callback: CallbackQuery, session: AsyncSession) -> 
         return
 
     request_id = int(callback.data.split(":")[1])
-    req = await get_request_by_id(session, request_id)
+
+    # Завантажуємо заявку разом з медіа
+    result = await session.execute(
+        select(Request)
+        .options(selectinload(Request.media))
+        .where(Request.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+
     if req is None:
         await callback.answer("Заявку не знайдено.", show_alert=True)
         return
 
-    await callback.message.edit_text(
-        _build_request_text(req),
-        parse_mode="HTML",
-        reply_markup=_build_status_keyboard(req),
-    )
+    text = _build_request_text(req)
+    kb = _build_status_keyboard(req)
+
+    # Збираємо фото заявки
+    photos = [m for m in req.media if m.type == MediaType.PHOTO]
+    videos = [m for m in req.media if m.type == MediaType.VIDEO]
+
+    # Редагуємо поточне повідомлення з текстом
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+
+    # Надсилаємо медіа окремими повідомленнями якщо є
+    if photos or videos:
+        media_info = []
+        if photos:
+            media_info.append(f"📷 фото: {len(photos)}")
+        if videos:
+            media_info.append(f"🎥 відео: {len(videos)}")
+        await callback.message.answer(f"📎 Медіафайли заявки ({', '.join(media_info)}):")
+
+        for photo in photos:
+            try:
+                await callback.message.answer_photo(photo=photo.file_id)
+            except Exception as exc:
+                logger.warning("Failed to send photo for request #%s: %s", request_id, exc)
+
+        for video in videos:
+            try:
+                await callback.message.answer_video(video=video.file_id)
+            except Exception as exc:
+                logger.warning("Failed to send video for request #%s: %s", request_id, exc)
+
     await callback.answer()
 
 
@@ -194,13 +235,14 @@ async def change_status_callback(
         await state.update_data(
             request_id=request_id,
             new_status=new_status.value,
+            comment_media=[],
         )
         action = "закриття" if new_status == Status.DONE else "відхилення"
 
         from aiogram.utils.keyboard import InlineKeyboardBuilder
         builder = InlineKeyboardBuilder()
-        builder.button(text="⏭ Пропустити коментар", callback_data="admin_comment:skip")
         builder.button(text="✏️ Написати коментар", callback_data="admin_comment:write")
+        builder.button(text="⏭ Без коментаря", callback_data="admin_comment:skip")
         builder.adjust(1)
 
         await callback.answer()
@@ -246,30 +288,106 @@ async def admin_comment_skip(
     bot_instance: Bot,
 ) -> None:
     """Пропустити коментар — одразу змінити статус."""
-    await _apply_status_change(callback, state, session, bot_instance, comment=None)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await _apply_status_change(callback, state, session, bot_instance, comment=None, media_file_ids=[])
 
 
 @router.callback_query(F.data == "admin_comment:write", AdminCommentStates.waiting_comment)
-async def admin_comment_write(callback: CallbackQuery) -> None:
-    """Попросити ввести коментар текстом."""
+async def admin_comment_write(callback: CallbackQuery, state: FSMContext) -> None:
+    """Попросити ввести коментар текстом або з медіа."""
+    await state.set_state(AdminCommentStates.waiting_comment_media)
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.message.answer("✏️ Введіть коментар для заявника:")
+    await callback.message.answer(
+        "✏️ Введіть коментар для заявника.\n\n"
+        "Ви також можете прикріпити фото або відео до коментаря.\n"
+        "Коли закінчите — надішліть текст або натисніть <b>Готово</b> якщо тільки медіа.",
+        parse_mode="HTML",
+    )
 
 
 # ---------------------------------------------------------------------------
-# Отримання тексту коментаря
+# Отримання тексту коментаря (з можливістю медіа)
 # ---------------------------------------------------------------------------
 
-@router.message(AdminCommentStates.waiting_comment)
-async def process_admin_comment(
+@router.message(AdminCommentStates.waiting_comment_media, F.photo | F.video)
+async def process_admin_comment_media(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    """Зберігаємо медіа що адмін прикріплює до коментаря."""
+    fsm_data = await state.get_data()
+    media_list: list[dict] = fsm_data.get("comment_media", [])
+
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        media_list.append({"type": "photo", "file_id": file_id})
+    elif message.video:
+        file_id = message.video.file_id
+        media_list.append({"type": "video", "file_id": file_id})
+
+    await state.update_data(comment_media=media_list)
+
+    # Якщо є підпис — це і є коментар, одразу застосовуємо
+    caption = message.caption.strip() if message.caption else None
+    if caption:
+        await state.update_data(comment_text=caption)
+        # Показуємо кнопку "Готово" або чекаємо ще медіа
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="✅ Готово", callback_data="admin_comment:done")
+        builder.button(text="➕ Додати ще медіа", callback_data="admin_comment:more_media")
+        builder.adjust(1)
+        await message.answer(
+            f"📎 Медіа додано ({len(media_list)} шт.). Коментар: «{caption}»\n\nЩо далі?",
+            reply_markup=builder.as_markup(),
+        )
+    else:
+        from aiogram.utils.keyboard import InlineKeyboardBuilder
+        builder = InlineKeyboardBuilder()
+        builder.button(text="✅ Готово (без тексту)", callback_data="admin_comment:done")
+        builder.button(text="➕ Додати ще медіа", callback_data="admin_comment:more_media")
+        builder.adjust(1)
+        await message.answer(
+            f"📎 Медіа додано ({len(media_list)} шт.). Введіть текст коментаря або натисніть «Готово».",
+            reply_markup=builder.as_markup(),
+        )
+
+
+@router.message(AdminCommentStates.waiting_comment_media, F.text & ~F.text.in_({"❌ Скасувати"}))
+async def process_admin_comment_text(
     message: Message,
     state: FSMContext,
     session: AsyncSession,
     bot_instance: Bot,
 ) -> None:
+    """Отримуємо текст коментаря і застосовуємо зміну статусу."""
     comment = message.text.strip() if message.text else None
-    await _apply_status_change(message, state, session, bot_instance, comment=comment)
+    fsm_data = await state.get_data()
+    media_list: list[dict] = fsm_data.get("comment_media", [])
+    await _apply_status_change(message, state, session, bot_instance, comment=comment, media_file_ids=media_list)
+
+
+@router.callback_query(F.data == "admin_comment:done", AdminCommentStates.waiting_comment_media)
+async def admin_comment_done(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    bot_instance: Bot,
+) -> None:
+    """Застосовуємо зміну статусу з накопиченими медіа та коментарем."""
+    await callback.message.edit_reply_markup(reply_markup=None)
+    fsm_data = await state.get_data()
+    comment = fsm_data.get("comment_text")
+    media_list: list[dict] = fsm_data.get("comment_media", [])
+    await _apply_status_change(callback, state, session, bot_instance, comment=comment, media_file_ids=media_list)
+
+
+@router.callback_query(F.data == "admin_comment:more_media", AdminCommentStates.waiting_comment_media)
+async def admin_comment_more_media(callback: CallbackQuery) -> None:
+    """Просто закриваємо кнопки і чекаємо ще медіа."""
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Надішліть ще медіа або введіть текст коментаря.")
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +400,7 @@ async def _apply_status_change(
     session: AsyncSession,
     bot_instance: Bot,
     comment: str | None,
+    media_file_ids: list[dict],
 ) -> None:
     fsm_data = await state.get_data()
     request_id: int = fsm_data["request_id"]
@@ -305,7 +424,7 @@ async def _apply_status_change(
         await msg.answer(f"Помилка: {exc}")
         return
 
-    # Сповіщення заявнику — статус + коментар одним повідомленням
+    # Сповіщення заявнику — статус + коментар + медіа
     result = await session.execute(select(User).where(User.id == req.user_id))
     user = result.scalar_one_or_none()
 
@@ -320,6 +439,21 @@ async def _apply_status_change(
                 text=user_text,
                 parse_mode="HTML",
             )
+            # Надсилаємо медіа з коментаря заявнику
+            for media_item in media_file_ids:
+                try:
+                    if media_item["type"] == "photo":
+                        await bot_instance.send_photo(
+                            chat_id=user.telegram_id,
+                            photo=media_item["file_id"],
+                        )
+                    elif media_item["type"] == "video":
+                        await bot_instance.send_video(
+                            chat_id=user.telegram_id,
+                            video=media_item["file_id"],
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to send comment media to user: %s", exc)
         except Exception as exc:
             logger.warning("Failed to notify user: %s", exc)
 
@@ -327,6 +461,8 @@ async def _apply_status_change(
     confirm_text = f"✅ Заявку <b>#{req.id}</b> змінено на {st_label}."
     if comment:
         confirm_text += "\n💬 Коментар надіслано заявнику."
+    if media_file_ids:
+        confirm_text += f"\n📎 Медіа ({len(media_file_ids)} шт.) надіслано заявнику."
 
     msg = target if isinstance(target, Message) else target.message
     from bot.keyboards.reply import admin_menu_keyboard

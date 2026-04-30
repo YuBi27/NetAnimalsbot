@@ -21,6 +21,7 @@ class Category(str, enum.Enum):
 class Status(str, enum.Enum):
     NEW = "NEW"
     IN_PROGRESS = "IN_PROGRESS"
+    AWAITING_FEEDBACK = "AWAITING_FEEDBACK"  # погоджено, чекаємо фідбек від користувача
     DONE = "DONE"
     REJECTED = "REJECTED"
 
@@ -32,7 +33,8 @@ class MediaType(str, enum.Enum):
 
 ALLOWED_TRANSITIONS: dict[Status, set[Status]] = {
     Status.NEW: {Status.IN_PROGRESS, Status.REJECTED},
-    Status.IN_PROGRESS: {Status.DONE, Status.REJECTED},
+    Status.IN_PROGRESS: {Status.AWAITING_FEEDBACK, Status.DONE, Status.REJECTED},
+    Status.AWAITING_FEEDBACK: {Status.DONE, Status.REJECTED},
     Status.DONE: set(),
     Status.REJECTED: set(),
 }
@@ -64,6 +66,7 @@ class Request(Base):
     contact = Column(String, nullable=True)
     status = Column(Enum(Status), default=Status.NEW)
     admin_comment = Column(String, nullable=True)
+    feedback_text = Column(String, nullable=True)   # фідбек користувача після стерилізації
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="requests")

@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _CATEGORY_MAP: dict[str, Category] = {
-    "🐕 Загублена тварина — подати заявку": Category.LOST,
-    "🩹 Поранена або хвора тварина": Category.INJURED,
-    "✂️ Запит на стерилізацію": Category.STERILIZATION,
-    "⚠️ Агресивна тварина на вулиці": Category.AGGRESSIVE,
-    "💀 Виявлено мертву тварину": Category.DEAD,
+    "🐾 Загублена тварина — подати заявку": Category.LOST,
+    "🚑 Поранена або хвора тварина": Category.INJURED,
+    "💉 Запит на стерилізацію": Category.STERILIZATION,
+    "🐺 Агресивна тварина на вулиці": Category.AGGRESSIVE,
+    "🪦 Виявлено мертву тварину": Category.DEAD,
 }
 
 _MAX_MEDIA = 5
@@ -367,23 +367,24 @@ async def confirm_request(
     )
 
     admin_text = format_admin_message(req, user)
-    try:
-        await bot_instance.send_message(
-            chat_id=settings.ADMIN_ID,
-            text=admin_text,
-            reply_markup=admin_request_keyboard(req.id),
-            parse_mode="HTML",
-        )
-        for mf in media_files:
-            try:
-                if mf["type"] == "photo":
-                    await bot_instance.send_photo(chat_id=settings.ADMIN_ID, photo=mf["file_id"])
-                else:
-                    await bot_instance.send_video(chat_id=settings.ADMIN_ID, video=mf["file_id"])
-            except Exception as exc:
-                logger.warning("Failed to forward media to admin: %s", exc)
-    except Exception as exc:
-        logger.error("Failed to send admin notification: %s", exc)
+    for admin_id in settings.all_admin_ids:
+        try:
+            await bot_instance.send_message(
+                chat_id=admin_id,
+                text=admin_text,
+                reply_markup=admin_request_keyboard(req.id),
+                parse_mode="HTML",
+            )
+            for mf in media_files:
+                try:
+                    if mf["type"] == "photo":
+                        await bot_instance.send_photo(chat_id=admin_id, photo=mf["file_id"])
+                    else:
+                        await bot_instance.send_video(chat_id=admin_id, video=mf["file_id"])
+                except Exception as exc:
+                    logger.warning("Failed to forward media to admin %s: %s", admin_id, exc)
+        except Exception as exc:
+            logger.error("Failed to send admin notification to %s: %s", admin_id, exc)
 
     try:
         await service.publish_to_channel(req, settings.CHANNEL_ID)

@@ -18,6 +18,22 @@ class BroadcastStates(StatesGroup):
 
 class AdminCommentStates(StatesGroup):
     waiting_comment = State()  # request_id і new_status зберігаються в FSM data
+    waiting_comment_media = State()  # очікуємо медіа до коментаря
+
+
+class SelfSterilizationStates(StatesGroup):
+    """FSM для заявки 'Я хочу стерилізувати самостійно'."""
+    waiting_description = State()
+    waiting_media = State()
+    waiting_contact = State()
+    confirming = State()
+
+
+class FeedbackStates(StatesGroup):
+    """FSM для фідбеку після стерилізації."""
+    waiting_description = State()
+    waiting_media = State()
+    confirming = State()
 
 
 class BiteReportStates(StatesGroup):
