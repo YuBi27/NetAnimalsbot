@@ -106,6 +106,8 @@ def _format_sterilized_card(req: Request, index: int, total: int) -> str:
 @router.message(F.text == "🏷️ Стерилізовані тварини")
 async def browse_sterilized_animals(message: Message, session: AsyncSession) -> None:
     """Показує список тварин що пройшли стерилізацію (статус DONE) — тільки для адміна."""
+    from bot.keyboards.reply import admin_menu_keyboard
+
     if message.from_user.id not in settings.all_admin_ids:
         await message.answer("⛔️ Цей розділ доступний лише адміністратору.")
         return
@@ -122,7 +124,7 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession) -> 
     if not all_sterilized:
         await message.answer(
             "✂️ Наразі немає записів про стерилізованих тварин.",
-            reply_markup=main_menu_keyboard(),
+            reply_markup=admin_menu_keyboard(),
         )
         return
 
@@ -151,7 +153,7 @@ async def browse_sterilized_animals(message: Message, session: AsyncSession) -> 
         except Exception as exc:
             logger.warning("Failed to send sterilized animal card #%s: %s", req.id, exc)
 
-    await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=main_menu_keyboard())
+    await message.answer("Це всі записи про стерилізованих тварин.", reply_markup=admin_menu_keyboard())
 
 
 @router.callback_query(F.data.startswith("found:"))
