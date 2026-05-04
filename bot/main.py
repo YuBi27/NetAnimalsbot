@@ -106,6 +106,14 @@ async def lifespan(app: FastAPI):
     await create_tables(engine)
     logger.info("Database tables initialised.")
 
+    # Встановлюємо команди бота (відображаються як кнопка Menu / "/" в Telegram)
+    from aiogram.types import BotCommand
+    await _bot.set_my_commands([
+        BotCommand(command="start", description="🏠 Головне меню"),
+        BotCommand(command="menu", description="📋 Показати меню"),
+    ])
+    logger.info("Bot commands set.")
+
     if settings.WEBHOOK_URL:
         webhook_url = f"{settings.WEBHOOK_URL.rstrip('/')}/webhook"
         await _bot.set_webhook(

@@ -207,7 +207,6 @@ async def _show_self_sterilization_confirmation(message: Message, state: FSMCont
     builder.button(text="❌ Скасувати", callback_data="self_sterilization:cancel")
     builder.adjust(1)
 
-    await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await message.answer(summary, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 
@@ -459,7 +458,6 @@ async def _show_feedback_confirmation(message: Message, state: FSMContext) -> No
     builder.button(text="❌ Скасувати", callback_data="feedback:cancel")
     builder.adjust(1)
 
-    await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await message.answer(summary, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 

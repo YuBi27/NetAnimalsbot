@@ -38,7 +38,7 @@ def _format_lost_card(req: Request, index: int, total: int) -> str:
     )
 
 
-@router.message(F.text == "🗺️ Переглянути загублених тварин")
+@router.message(F.text == "🗺️ Загублені — перегляд")
 async def browse_lost_animals(message: Message, session: AsyncSession, state: FSMContext) -> None:
     """Показує список активних заявок про загублених тварин."""
     from bot.models.models import Request as RequestModel
@@ -97,7 +97,7 @@ def _format_sterilized_card(req: Request, index: int, total: int) -> str:
     )
 
 
-@router.message(F.text == "🏷️ Стерилізовані тварини")
+@router.message(F.text == "🏷️ Стерилізовані")
 async def browse_sterilized_animals(message: Message, session: AsyncSession, state: FSMContext) -> None:
     """Показує список тварин що пройшли стерилізацію (статус DONE) — тільки для адміна."""
     from bot.keyboards.reply import admin_menu_keyboard

@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _CATEGORY_MAP: dict[str, Category] = {
-    "🐾 Загублена тварина — подати заявку": Category.LOST,
-    "🚑 Поранена або хвора тварина": Category.INJURED,
+    "🐾 Загублена тварина": Category.LOST,
+    "🚑 Поранена тварина": Category.INJURED,
     "💉 Запит на стерилізацію": Category.STERILIZATION,
-    "🐺 Агресивна тварина на вулиці": Category.AGGRESSIVE,
-    "🪦 Виявлено мертву тварину": Category.DEAD,
+    "🐺 Агресивна тварина": Category.AGGRESSIVE,
+    "🪦 Мертва тварина": Category.DEAD,
 }
 
 _MAX_MEDIA = 5
@@ -274,7 +274,6 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     builder.button(text="❌ Скасувати", callback_data="request:cancel")
     builder.adjust(1)
 
-    await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await message.answer(summary, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 

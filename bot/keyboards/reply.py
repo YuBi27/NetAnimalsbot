@@ -10,16 +10,16 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text="🐾 Загублена тварина — подати заявку"),
-        KeyboardButton(text="🗺️ Переглянути загублених тварин"),
+        KeyboardButton(text="🐾 Загублена тварина"),
+        KeyboardButton(text="🗺️ Загублені — перегляд"),
     )
     builder.row(
-        KeyboardButton(text="🚑 Поранена або хвора тварина"),
-        KeyboardButton(text="🐺 Агресивна тварина на вулиці"),
+        KeyboardButton(text="🚑 Поранена тварина"),
+        KeyboardButton(text="🐺 Агресивна тварина"),
     )
     builder.row(
         KeyboardButton(text="💉 Запит на стерилізацію"),
-        KeyboardButton(text="🪦 Виявлено мертву тварину"),
+        KeyboardButton(text="🪦 Мертва тварина"),
     )
     builder.row(
         KeyboardButton(text="🩸 Мене вкусила тварина"),
@@ -27,7 +27,7 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🔬 Стерилізую самостійно"),
-        KeyboardButton(text="📖 Довідка та інформація"),
+        KeyboardButton(text="📖 Довідка"),
     )
     return builder.as_markup(resize_keyboard=True)
 
@@ -35,16 +35,16 @@ def main_menu_keyboard() -> ReplyKeyboardMarkup:
 def main_menu_with_draft_keyboard() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text="🐾 Загублена тварина — подати заявку"),
-        KeyboardButton(text="🗺️ Переглянути загублених тварин"),
+        KeyboardButton(text="🐾 Загублена тварина"),
+        KeyboardButton(text="🗺️ Загублені — перегляд"),
     )
     builder.row(
-        KeyboardButton(text="🚑 Поранена або хвора тварина"),
-        KeyboardButton(text="🐺 Агресивна тварина на вулиці"),
+        KeyboardButton(text="🚑 Поранена тварина"),
+        KeyboardButton(text="🐺 Агресивна тварина"),
     )
     builder.row(
         KeyboardButton(text="💉 Запит на стерилізацію"),
-        KeyboardButton(text="🪦 Виявлено мертву тварину"),
+        KeyboardButton(text="🪦 Мертва тварина"),
     )
     builder.row(
         KeyboardButton(text="🩸 Мене вкусила тварина"),
@@ -52,28 +52,23 @@ def main_menu_with_draft_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🔬 Стерилізую самостійно"),
-        KeyboardButton(text="📖 Довідка та інформація"),
+        KeyboardButton(text="📖 Довідка"),
     )
     builder.row(KeyboardButton(text="✏️ Продовжити незавершену заявку"))
     return builder.as_markup(resize_keyboard=True)
 
 
 def location_keyboard() -> ReplyKeyboardMarkup:
-    """Клавіатура для вибору способу надання локації.
-
-    Вимоги: 2.2
-    """
+    """Клавіатура для вибору способу надання локації."""
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text="📍 Поділитися геолокацією", request_location=True))
     builder.row(KeyboardButton(text="Ввести адресу текстом"))
+    builder.row(KeyboardButton(text="🏠 Меню"), KeyboardButton(text="❌ Скасувати"))
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
 def contact_keyboard() -> ReplyKeyboardMarkup:
-    """Клавіатура для вибору способу надання контакту.
-
-    Вимоги: 2.9
-    """
+    """Клавіатура для вибору способу надання контакту."""
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text="📱 Поділитися контактом", request_contact=True))
     builder.row(KeyboardButton(text="Ввести @username"))
@@ -81,10 +76,7 @@ def contact_keyboard() -> ReplyKeyboardMarkup:
 
 
 def skip_media_keyboard() -> ReplyKeyboardMarkup:
-    """Клавіатура з кнопкою пропуску медіа.
-
-    Вимоги: 2.7
-    """
+    """Клавіатура з кнопкою пропуску медіа."""
     builder = ReplyKeyboardBuilder()
     builder.row(KeyboardButton(text="⏭ Пропустити медіа"))
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -110,7 +102,7 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🩺 Звіти про укуси"),
-        KeyboardButton(text="🏷️ Стерилізовані тварини"),
+        KeyboardButton(text="🏷️ Стерилізовані"),
     )
     builder.row(
         KeyboardButton(text="📝 Подати заявку"),
@@ -122,16 +114,16 @@ def admin_request_submit_keyboard() -> ReplyKeyboardMarkup:
     """Меню вибору категорії заявки для адміна."""
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text="🐾 Загублена тварина — подати заявку"),
-        KeyboardButton(text="🗺️ Переглянути загублених тварин"),
+        KeyboardButton(text="🐾 Загублена тварина"),
+        KeyboardButton(text="🗺️ Загублені — перегляд"),
     )
     builder.row(
-        KeyboardButton(text="🚑 Поранена або хвора тварина"),
-        KeyboardButton(text="🐺 Агресивна тварина на вулиці"),
+        KeyboardButton(text="🚑 Поранена тварина"),
+        KeyboardButton(text="🐺 Агресивна тварина"),
     )
     builder.row(
         KeyboardButton(text="💉 Запит на стерилізацію"),
-        KeyboardButton(text="🪦 Виявлено мертву тварину"),
+        KeyboardButton(text="🪦 Мертва тварина"),
     )
     builder.row(
         KeyboardButton(text="🩸 Мене вкусила тварина"),

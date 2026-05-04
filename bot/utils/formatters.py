@@ -6,7 +6,7 @@ from bot.utils.maps import format_location
 # Людиночитані назви категорій
 CATEGORY_LABELS: dict[Category, str] = {
     Category.LOST: "🐾 Загублена тварина",
-    Category.INJURED: "🚑 Поранена або хвора тварина",
+    Category.INJURED: "🚑 Поранена тварина",
     Category.STERILIZATION: "💉 Стерилізація",
     Category.AGGRESSIVE: "🐺 Агресивна тварина",
     Category.DEAD: "🪦 Мертва тварина",

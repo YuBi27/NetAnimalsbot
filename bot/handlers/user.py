@@ -3,7 +3,7 @@
 import logging
 
 from aiogram import Bot, F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -100,6 +100,16 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
             f"Привіт, {name}! 👋\n\nЯ бот для волонтерів — допомагаю збирати заявки про тварин.\nОберіть дію у меню нижче:",
             reply_markup=smart_menu_keyboard(message.from_user.id),
         )
+
+
+@router.message(Command("menu"))
+async def cmd_menu(message: Message, state: FSMContext) -> None:
+    """Команда /menu — показує головне меню без привітання."""
+    await state.clear()
+    await message.answer(
+        "📋 Головне меню:",
+        reply_markup=smart_menu_keyboard(message.from_user.id),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +303,7 @@ async def show_request_detail(callback: CallbackQuery, session: AsyncSession, st
     await callback.answer()
 
 
-@router.message(F.text == "📖 Довідка та інформація")
+@router.message(F.text == "📖 Довідка")
 async def show_info(message: Message, state: FSMContext) -> None:
     sent = await message.answer(INFO_TEXT, parse_mode="HTML", reply_markup=smart_menu_keyboard(message.from_user.id))
 
