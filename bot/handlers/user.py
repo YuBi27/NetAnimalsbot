@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards.inline import user_requests_keyboard
-from bot.keyboards.reply import admin_menu_keyboard, main_menu_keyboard, main_menu_with_draft_keyboard, smart_menu_keyboard
+from bot.keyboards.reply import admin_menu_keyboard, admin_request_submit_keyboard, main_menu_keyboard, main_menu_with_draft_keyboard, smart_menu_keyboard
 from bot.repositories.request_repo import get_request_by_id, get_user_requests
 from bot.repositories.user_repo import get_or_create_user
 from bot.utils.formatters import CATEGORY_LABELS, STATUS_LABELS
@@ -105,6 +105,17 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
 # ---------------------------------------------------------------------------
 # Адмін-кнопки меню
 # ---------------------------------------------------------------------------
+
+@router.message(F.text == "📝 Подати заявку")
+async def admin_btn_submit_request(message: Message) -> None:
+    """Адмін переходить у режим подачі заявки."""
+    if not _is_admin(message.from_user.id):
+        return
+    await message.answer(
+        "📝 Оберіть категорію заявки:",
+        reply_markup=admin_request_submit_keyboard(),
+    )
+
 
 @router.message(F.text == "📑 Всі заявки")
 async def admin_btn_requests(message: Message, session: AsyncSession, state: FSMContext) -> None:
@@ -290,7 +301,8 @@ async def show_info(message: Message, state: FSMContext) -> None:
 @router.message(F.text == "🏠 Меню")
 async def show_menu(message: Message, state: FSMContext) -> None:
     if _is_admin(message.from_user.id):
-        sent = await message.answer("Головне меню:", reply_markup=admin_menu_keyboard())
+        await state.clear()
+        await message.answer("Головне меню:", reply_markup=admin_menu_keyboard())
         return
 
     fsm_data = await state.get_data()

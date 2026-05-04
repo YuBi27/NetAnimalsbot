@@ -112,6 +112,34 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text="🩺 Звіти про укуси"),
         KeyboardButton(text="🏷️ Стерилізовані тварини"),
     )
+    builder.row(
+        KeyboardButton(text="📝 Подати заявку"),
+    )
+    return builder.as_markup(resize_keyboard=True)
+
+
+def admin_request_submit_keyboard() -> ReplyKeyboardMarkup:
+    """Меню вибору категорії заявки для адміна."""
+    builder = ReplyKeyboardBuilder()
+    builder.row(
+        KeyboardButton(text="🐾 Загублена тварина — подати заявку"),
+        KeyboardButton(text="🗺️ Переглянути загублених тварин"),
+    )
+    builder.row(
+        KeyboardButton(text="🚑 Поранена або хвора тварина"),
+        KeyboardButton(text="🐺 Агресивна тварина на вулиці"),
+    )
+    builder.row(
+        KeyboardButton(text="💉 Запит на стерилізацію"),
+        KeyboardButton(text="🪦 Виявлено мертву тварину"),
+    )
+    builder.row(
+        KeyboardButton(text="🩸 Мене вкусила тварина"),
+        KeyboardButton(text="🔬 Стерилізую самостійно"),
+    )
+    builder.row(
+        KeyboardButton(text="🏠 Меню"),
+    )
     return builder.as_markup(resize_keyboard=True)
 
 

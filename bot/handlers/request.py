@@ -367,7 +367,11 @@ async def confirm_request(
     )
 
     admin_text = format_admin_message(req, user)
+    is_admin_submitting = callback.from_user.id in settings.all_admin_ids
     for admin_id in settings.all_admin_ids:
+        # Не надсилаємо сповіщення адміну якщо він сам подає заявку
+        if is_admin_submitting and admin_id == callback.from_user.id:
+            continue
         try:
             await bot_instance.send_message(
                 chat_id=admin_id,
@@ -403,7 +407,7 @@ async def confirm_request(
 
     await callback.message.answer(
         f"✅ Заявку <b>#{req.id}</b> успішно подано!\nМи розглянемо її найближчим часом.",
-        reply_markup=smart_menu_keyboard(message.from_user.id),
+        reply_markup=smart_menu_keyboard(callback.from_user.id),
         parse_mode="HTML",
     )
     await callback.answer()
