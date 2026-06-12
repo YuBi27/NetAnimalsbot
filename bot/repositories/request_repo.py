@@ -39,12 +39,9 @@ async def get_request_by_id(
     session: AsyncSession,
     request_id: int,
 ) -> Request | None:
-    """Return a Request by its primary key (with media eagerly loaded), or None if not found."""
-    from sqlalchemy.orm import selectinload
+    """Return a Request by its primary key, or None if not found."""
     result = await session.execute(
-        select(Request)
-        .options(selectinload(Request.media))
-        .where(Request.id == request_id)
+        select(Request).where(Request.id == request_id)
     )
     return result.scalar_one_or_none()
 
@@ -55,7 +52,7 @@ async def get_user_requests(
 ) -> list[Request]:
     """Return all requests belonging to a user (by users.id FK)."""
     result = await session.execute(
-        select(Request).where(Request.user_id == user_id)
+        select(Request).where(Request.user_id == user_id).order_by(Request.created_at.desc())
     )
     return list(result.scalars().all())
 
@@ -104,5 +101,5 @@ async def get_requests_filtered(
     if date_to is not None:
         query = query.where(Request.created_at <= date_to)
 
-    result = await session.execute(query)
+    result = await session.execute(query.order_by(Request.created_at.desc()))
     return list(result.scalars().all())
