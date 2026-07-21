@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
 from bot.keyboards.inline import admin_request_keyboard
-from bot.keyboards.reply import contact_keyboard, main_menu_keyboard, smart_menu_keyboard
+from bot.keyboards.reply import contact_keyboard, main_menu_keyboard
 from bot.middlewares.throttle import increment_spam_counter
 from bot.models.models import Category
 from bot.repositories.user_repo import get_or_create_user
@@ -32,11 +32,11 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 _CATEGORY_MAP: dict[str, Category] = {
-    "🐾 Загублена тварина": Category.LOST,
-    "🚑 Поранена тварина": Category.INJURED,
-    "💉 Запит на стерилізацію": Category.STERILIZATION,
-    "🐺 Агресивна тварина": Category.AGGRESSIVE,
-    "🪦 Мертва тварина": Category.DEAD,
+    "🐕 Загублена тварина — подати заявку": Category.LOST,
+    "🩹 Поранена або хвора тварина": Category.INJURED,
+    "✂️ Запит на стерилізацію": Category.STERILIZATION,
+    "⚠️ Агресивна тварина на вулиці": Category.AGGRESSIVE,
+    "💀 Виявлено мертву тварину": Category.DEAD,
 }
 
 _MAX_MEDIA = 5
@@ -274,6 +274,7 @@ async def _show_confirmation(message: Message, state: FSMContext) -> None:
     builder.button(text="❌ Скасувати", callback_data="request:cancel")
     builder.adjust(1)
 
+    await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
     await message.answer(summary, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 
@@ -307,7 +308,7 @@ async def back_from_confirm(callback: CallbackQuery, state: FSMContext) -> None:
 )
 async def cancel_request_reply(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("❌ Заявку скасовано.", reply_markup=smart_menu_keyboard(message.from_user.id))
+    await message.answer("❌ Заявку скасовано.", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "request:cancel")
@@ -317,7 +318,7 @@ async def cancel_request(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer("❌ Заявку скасовано.", reply_markup=smart_menu_keyboard(callback.from_user.id))
+    await callback.message.answer("❌ Заявку скасовано.", reply_markup=main_menu_keyboard())
     await callback.answer()
 
 
@@ -366,28 +367,23 @@ async def confirm_request(
     )
 
     admin_text = format_admin_message(req, user)
-    is_admin_submitting = callback.from_user.id in settings.all_admin_ids
-    for admin_id in settings.all_admin_ids:
-        # Не надсилаємо сповіщення адміну якщо він сам подає заявку
-        if is_admin_submitting and admin_id == callback.from_user.id:
-            continue
-        try:
-            await bot_instance.send_message(
-                chat_id=admin_id,
-                text=admin_text,
-                reply_markup=admin_request_keyboard(req.id),
-                parse_mode="HTML",
-            )
-            for mf in media_files:
-                try:
-                    if mf["type"] == "photo":
-                        await bot_instance.send_photo(chat_id=admin_id, photo=mf["file_id"])
-                    else:
-                        await bot_instance.send_video(chat_id=admin_id, video=mf["file_id"])
-                except Exception as exc:
-                    logger.warning("Failed to forward media to admin %s: %s", admin_id, exc)
-        except Exception as exc:
-            logger.error("Failed to send admin notification to %s: %s", admin_id, exc)
+    try:
+        await bot_instance.send_message(
+            chat_id=settings.ADMIN_ID,
+            text=admin_text,
+            reply_markup=admin_request_keyboard(req.id),
+            parse_mode="HTML",
+        )
+        for mf in media_files:
+            try:
+                if mf["type"] == "photo":
+                    await bot_instance.send_photo(chat_id=settings.ADMIN_ID, photo=mf["file_id"])
+                else:
+                    await bot_instance.send_video(chat_id=settings.ADMIN_ID, video=mf["file_id"])
+            except Exception as exc:
+                logger.warning("Failed to forward media to admin: %s", exc)
+    except Exception as exc:
+        logger.error("Failed to send admin notification: %s", exc)
 
     try:
         await service.publish_to_channel(req, settings.CHANNEL_ID)
@@ -406,7 +402,7 @@ async def confirm_request(
 
     await callback.message.answer(
         f"✅ Заявку <b>#{req.id}</b> успішно подано!\nМи розглянемо її найближчим часом.",
-        reply_markup=smart_menu_keyboard(callback.from_user.id),
+        reply_markup=main_menu_keyboard(),
         parse_mode="HTML",
     )
     await callback.answer()

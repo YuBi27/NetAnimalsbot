@@ -19,7 +19,7 @@ router = Router()
 
 
 def _is_admin(telegram_id: int) -> bool:
-    return telegram_id in settings.all_admin_ids
+    return telegram_id == settings.ADMIN_ID
 
 
 def _cancel_keyboard() -> ReplyKeyboardMarkup:

@@ -14,7 +14,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from bot.config import settings
-from bot.handlers import admin, bite_report, broadcast, lost_browse, request, self_sterilization, user
+from bot.handlers import admin, bite_report, broadcast, lost_browse, request, user
 from bot.middlewares.throttle import ThrottleMiddleware
 from bot.models.models import create_tables
 
@@ -77,7 +77,6 @@ def _build_dispatcher(
 
     dp.include_router(user.router)
     dp.include_router(request.router)
-    dp.include_router(self_sterilization.router)
     dp.include_router(lost_browse.router)
     dp.include_router(bite_report.router)
     dp.include_router(admin.router)
@@ -94,10 +93,24 @@ def _build_dispatcher(
 async def lifespan(app: FastAPI):
     global _bot, _dp
 
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        echo=False,
+        # Для SQLite — одне з'єднання, check_same_thread=False
+        connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {},
+        pool_pre_ping=True,       # перевіряє з'єднання перед використанням
+        pool_recycle=1800,        # перестворює з'єднання кожні 30 хвилин
+    )
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
-    redis_client = aioredis.from_url(settings.REDIS_URL, decode_responses=True)
+    redis_client = aioredis.from_url(
+        settings.REDIS_URL,
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=5,
+        retry_on_timeout=True,
+        health_check_interval=30,  # автоматично перевіряє з'єднання
+    )
     storage = RedisStorage(redis=redis_client)
 
     _bot = Bot(token=settings.BOT_TOKEN)
@@ -105,14 +118,6 @@ async def lifespan(app: FastAPI):
 
     await create_tables(engine)
     logger.info("Database tables initialised.")
-
-    # Встановлюємо команди бота (відображаються як кнопка Menu / "/" в Telegram)
-    from aiogram.types import BotCommand
-    await _bot.set_my_commands([
-        BotCommand(command="start", description="🏠 Головне меню"),
-        BotCommand(command="menu", description="📋 Показати меню"),
-    ])
-    logger.info("Bot commands set.")
 
     if settings.WEBHOOK_URL:
         webhook_url = f"{settings.WEBHOOK_URL.rstrip('/')}/webhook"
@@ -167,7 +172,11 @@ async def telegram_webhook(
 
     body = await request.json()
     update = Update.model_validate(body)
-    await _dp.feed_update(bot=_bot, update=update)
+    # Timeout 25s — Telegram чекає відповідь максимум 30s
+    try:
+        await asyncio.wait_for(_dp.feed_update(bot=_bot, update=update), timeout=25.0)
+    except asyncio.TimeoutError:
+        logger.error("Update processing timeout: update_id=%s", body.get("update_id"))
     return {"ok": True}
 
 
@@ -181,4 +190,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=settings.WEBHOOK_PORT,
         reload=False,
+        timeout_keep_alive=30,
+        timeout_graceful_shutdown=10,
     )

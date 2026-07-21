@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bot.config import settings
-from bot.keyboards.reply import main_menu_keyboard, smart_menu_keyboard
+from bot.keyboards.reply import main_menu_keyboard
 from bot.models.models import BiteReport
 from bot.repositories.user_repo import get_or_create_user
 from bot.states import BiteReportStates
@@ -61,7 +61,7 @@ def _contact_keyboard() -> ReplyKeyboardMarkup:
     return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-@router.message(F.text == "🩸 Мене вкусила тварина")
+@router.message(F.text == "🦷 Мене вкусила тварина")
 async def start_bite_report(message: Message, state: FSMContext) -> None:
     """Початок FSM звіту про укус."""
     # Спочатку надсилаємо важливу інформацію
@@ -83,7 +83,7 @@ async def start_bite_report(message: Message, state: FSMContext) -> None:
 @router.message(BiteReportStates.waiting_contact, F.text == "❌ Скасувати")
 async def cancel_bite_report(message: Message, state: FSMContext) -> None:
     await state.clear()
-    await message.answer("Звіт скасовано.", reply_markup=smart_menu_keyboard(message.from_user.id))
+    await message.answer("Звіт скасовано.", reply_markup=main_menu_keyboard())
 
 
 @router.message(BiteReportStates.waiting_date, F.text)
@@ -178,15 +178,14 @@ async def _save_bite_report(
         f"<b>Контакт постраждалого:</b> {contact}\n"
         f"<b>Telegram:</b> {finder_info}"
     )
-    for admin_id in settings.all_admin_ids:
-        try:
-            await bot_instance.send_message(
-                chat_id=admin_id,
-                text=admin_text,
-                parse_mode="HTML",
-            )
-        except Exception as exc:
-            logger.error("Failed to notify admin %s about bite: %s", admin_id, exc)
+    try:
+        await bot_instance.send_message(
+            chat_id=settings.ADMIN_ID,
+            text=admin_text,
+            parse_mode="HTML",
+        )
+    except Exception as exc:
+        logger.error("Failed to notify admin about bite: %s", exc)
 
     await message.answer(
         "✅ <b>Звіт збережено!</b>\n\n"
@@ -194,5 +193,5 @@ async def _save_bite_report(
         "⚠️ <b>Нагадуємо:</b> зверніться до лікаря якомога швидше!\n"
         "📞 Екстрена допомога: <b>103</b>",
         parse_mode="HTML",
-        reply_markup=smart_menu_keyboard(message.from_user.id),
+        reply_markup=main_menu_keyboard(),
     )
