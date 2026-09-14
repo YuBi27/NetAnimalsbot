@@ -394,3 +394,479 @@ async def export_callback(callback: CallbackQuery, session: AsyncSession) -> Non
     from bot.keyboards.reply import admin_menu_keyboard
     await callback.message.answer_document(document, caption=f"Експорт заявок ({fmt.upper()})")
     await callback.message.answer("Головне меню:", reply_markup=admin_menu_keyboard())
+
+
+# ===========================================================================
+# Подача заявки адміністратором (AdminRequestStates)
+# ===========================================================================
+
+from bot.states import AdminRequestStates
+from bot.utils.validators import validate_description, validate_media_count
+
+_ADMIN_CATEGORY_MAP: dict[str, Category] = {
+    "🐕 Загублена тварина": Category.LOST,
+    "🩹 Поранена або хвора тварина": Category.INJURED,
+    "✂️ Стерилізація": Category.STERILIZATION,
+    "⚠️ Агресивна тварина": Category.AGGRESSIVE,
+    "💀 Мертва тварина": Category.DEAD,
+}
+
+_ADMIN_MAX_MEDIA = 5
+
+
+def _admin_category_keyboard():
+    """Вибір категорії для адміна — inline-кнопки."""
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    builder = InlineKeyboardBuilder()
+    for label, cat in _ADMIN_CATEGORY_MAP.items():
+        builder.button(text=label, callback_data=f"adm_req_cat:{cat.value}")
+    builder.button(text="❌ Скасувати", callback_data="adm_req_cancel")
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def _admin_location_keyboard():
+    from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+    from aiogram.utils.keyboard import ReplyKeyboardBuilder
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="📍 Поділитися геолокацією", request_location=True))
+    builder.row(KeyboardButton(text="Ввести адресу текстом"))
+    builder.row(KeyboardButton(text="❌ Скасувати заявку"))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def _admin_description_keyboard():
+    from aiogram.types import KeyboardButton
+    from aiogram.utils.keyboard import ReplyKeyboardBuilder
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="◀️ Назад"), KeyboardButton(text="❌ Скасувати заявку"))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def _admin_media_keyboard(count: int):
+    from aiogram.types import KeyboardButton
+    from aiogram.utils.keyboard import ReplyKeyboardBuilder
+    builder = ReplyKeyboardBuilder()
+    if count > 0:
+        builder.row(KeyboardButton(text="➡️ Далі"))
+    builder.row(KeyboardButton(text="⏭ Пропустити медіа"))
+    builder.row(KeyboardButton(text="◀️ Назад"), KeyboardButton(text="❌ Скасувати заявку"))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+def _admin_contact_keyboard():
+    from aiogram.types import KeyboardButton
+    from aiogram.utils.keyboard import ReplyKeyboardBuilder
+    builder = ReplyKeyboardBuilder()
+    builder.row(KeyboardButton(text="📱 Поділитися контактом", request_contact=True))
+    builder.row(KeyboardButton(text="Ввести @username"))
+    builder.row(KeyboardButton(text="⏭ Пропустити контакт"))
+    builder.row(KeyboardButton(text="◀️ Назад"), KeyboardButton(text="❌ Скасувати заявку"))
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
+
+
+# ---------------------------------------------------------------------------
+# Крок 1: Вибір категорії (inline)
+# ---------------------------------------------------------------------------
+
+@router.callback_query(F.data.startswith("adm_req_cat:"), AdminRequestStates.waiting_category)
+async def adm_req_choose_category(callback: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Немає доступу.", show_alert=True)
+        return
+
+    cat_value = callback.data.split(":", 1)[1]
+    try:
+        category = Category(cat_value)
+    except ValueError:
+        await callback.answer("Невідома категорія.", show_alert=True)
+        return
+
+    await state.update_data(adm_category=cat_value, adm_media=[])
+    await state.set_state(AdminRequestStates.waiting_location)
+
+    from bot.utils.formatters import CATEGORY_LABELS
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        f"Обрано: <b>{CATEGORY_LABELS[category]}</b>\n\n"
+        "📍 Надішліть геолокацію або введіть адресу текстом:",
+        reply_markup=_admin_location_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# Крок 2: Локація
+# ---------------------------------------------------------------------------
+
+@router.message(AdminRequestStates.waiting_location, F.location)
+async def adm_req_location_geo(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.update_data(
+        adm_latitude=message.location.latitude,
+        adm_longitude=message.location.longitude,
+        adm_address_text=None,
+    )
+    await state.set_state(AdminRequestStates.waiting_description)
+    await message.answer(
+        "✅ Геолокацію отримано.\n\n📝 Опишіть ситуацію (мінімум 10 символів):",
+        reply_markup=_admin_description_keyboard(),
+    )
+
+
+@router.message(
+    AdminRequestStates.waiting_location,
+    F.text & ~F.text.in_({"❌ Скасувати заявку"}),
+)
+async def adm_req_location_text(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.update_data(adm_latitude=None, adm_longitude=None, adm_address_text=message.text.strip())
+    await state.set_state(AdminRequestStates.waiting_description)
+    await message.answer(
+        "✅ Адресу збережено.\n\n📝 Опишіть ситуацію (мінімум 10 символів):",
+        reply_markup=_admin_description_keyboard(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Крок 3: Опис
+# ---------------------------------------------------------------------------
+
+@router.message(AdminRequestStates.waiting_description, F.text == "◀️ Назад")
+async def adm_req_back_to_location(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminRequestStates.waiting_location)
+    await message.answer(
+        "📍 Надішліть геолокацію або введіть адресу текстом:",
+        reply_markup=_admin_location_keyboard(),
+    )
+
+
+@router.message(
+    AdminRequestStates.waiting_description,
+    F.text & ~F.text.in_({"◀️ Назад", "❌ Скасувати заявку"}),
+)
+async def adm_req_description(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    text = message.text.strip()
+    if not validate_description(text):
+        await message.answer("⚠️ Опис занадто короткий. Введіть щонайменше 10 символів:")
+        return
+    await state.update_data(adm_description=text)
+    await state.set_state(AdminRequestStates.waiting_media)
+    fsm_data = await state.get_data()
+    count = len(fsm_data.get("adm_media", []))
+    await message.answer(
+        "✅ Опис збережено.\n\n📷 Надішліть фото або відео (до 5 файлів), або пропустіть:",
+        reply_markup=_admin_media_keyboard(count),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Крок 4: Медіа
+# ---------------------------------------------------------------------------
+
+@router.message(AdminRequestStates.waiting_media, F.text == "◀️ Назад")
+async def adm_req_back_to_description(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminRequestStates.waiting_description)
+    await message.answer(
+        "📝 Введіть опис ситуації (мінімум 10 символів):",
+        reply_markup=_admin_description_keyboard(),
+    )
+
+
+@router.message(AdminRequestStates.waiting_media, F.photo | F.video)
+async def adm_req_media(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    fsm_data = await state.get_data()
+    media: list[dict] = fsm_data.get("adm_media", [])
+
+    if not validate_media_count(len(media)):
+        await message.answer(f"⚠️ Досягнуто ліміт {_ADMIN_MAX_MEDIA} файлів. Натисніть «➡️ Далі».")
+        return
+
+    if message.photo:
+        media.append({"file_id": message.photo[-1].file_id, "type": "photo"})
+    else:
+        media.append({"file_id": message.video.file_id, "type": "video"})
+
+    await state.update_data(adm_media=media)
+    remaining = _ADMIN_MAX_MEDIA - len(media)
+
+    if remaining > 0:
+        await message.answer(
+            f"✅ Файл додано ({len(media)}/{_ADMIN_MAX_MEDIA}). Ще {remaining} або натисніть «➡️ Далі»:",
+            reply_markup=_admin_media_keyboard(len(media)),
+        )
+    else:
+        await state.set_state(AdminRequestStates.waiting_contact)
+        await message.answer(
+            f"✅ Додано {_ADMIN_MAX_MEDIA} файлів.\n\n📱 Вкажіть контакт або пропустіть:",
+            reply_markup=_admin_contact_keyboard(),
+        )
+
+
+@router.message(AdminRequestStates.waiting_media, F.text.in_({"⏭ Пропустити медіа", "➡️ Далі"}))
+async def adm_req_skip_media(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminRequestStates.waiting_contact)
+    await message.answer(
+        "📱 Вкажіть контакт або пропустіть:",
+        reply_markup=_admin_contact_keyboard(),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Крок 5: Контакт
+# ---------------------------------------------------------------------------
+
+@router.message(AdminRequestStates.waiting_contact, F.text == "◀️ Назад")
+async def adm_req_back_to_media(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.set_state(AdminRequestStates.waiting_media)
+    fsm_data = await state.get_data()
+    count = len(fsm_data.get("adm_media", []))
+    await message.answer(
+        "📷 Надішліть фото або відео (до 5 файлів), або пропустіть:",
+        reply_markup=_admin_media_keyboard(count),
+    )
+
+
+@router.message(AdminRequestStates.waiting_contact, F.contact)
+async def adm_req_contact_shared(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    c = message.contact
+    name = f"{c.first_name or ''} {c.last_name or ''}".strip()
+    contact_str = f"{name} ({c.phone_number})" if name else c.phone_number
+    await state.update_data(adm_contact=contact_str)
+    await _adm_show_confirmation(message, state)
+
+
+@router.message(
+    AdminRequestStates.waiting_contact,
+    F.text.in_({"⏭ Пропустити контакт"}),
+)
+async def adm_req_skip_contact(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.update_data(adm_contact=None)
+    await _adm_show_confirmation(message, state)
+
+
+@router.message(
+    AdminRequestStates.waiting_contact,
+    F.text & ~F.text.in_({"◀️ Назад", "❌ Скасувати заявку", "⏭ Пропустити контакт"}),
+)
+async def adm_req_contact_text(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.update_data(adm_contact=message.text.strip())
+    await _adm_show_confirmation(message, state)
+
+
+# ---------------------------------------------------------------------------
+# Крок 6: Підтвердження
+# ---------------------------------------------------------------------------
+
+async def _adm_show_confirmation(message: Message, state: FSMContext) -> None:
+    from aiogram.types import ReplyKeyboardRemove
+    from aiogram.utils.keyboard import InlineKeyboardBuilder
+    from bot.models.models import Category
+    from bot.utils.formatters import CATEGORY_LABELS
+    from bot.utils.maps import make_maps_link
+
+    fsm_data = await state.get_data()
+    await state.set_state(AdminRequestStates.confirming)
+
+    category = Category(fsm_data["adm_category"])
+    lat = fsm_data.get("adm_latitude")
+    lon = fsm_data.get("adm_longitude")
+    address_text = fsm_data.get("adm_address_text")
+    contact = fsm_data.get("adm_contact") or "Не вказано"
+    media_count = len(fsm_data.get("adm_media", []))
+
+    if lat is not None and lon is not None:
+        location_str = make_maps_link(lat, lon)
+        if address_text:
+            location_str += f"\n{address_text}"
+    elif address_text:
+        location_str = address_text
+    else:
+        location_str = "Не вказано"
+
+    summary = (
+        f"📋 <b>Перевірте заявку:</b>\n\n"
+        f"<b>Категорія:</b> {CATEGORY_LABELS[category]}\n"
+        f"<b>Опис:</b> {fsm_data.get('adm_description', '—')}\n"
+        f"<b>Локація:</b> {location_str}\n"
+        f"<b>Контакт:</b> {contact}\n"
+        f"<b>Медіафайлів:</b> {media_count}"
+    )
+
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ Зберегти заявку", callback_data="adm_req:confirm")
+    builder.button(text="◀️ Назад", callback_data="adm_req:back_from_confirm")
+    builder.button(text="❌ Скасувати", callback_data="adm_req:cancel")
+    builder.adjust(1)
+
+    await message.answer("⏳", reply_markup=ReplyKeyboardRemove())
+    await message.answer(summary, reply_markup=builder.as_markup(), parse_mode="HTML")
+
+
+@router.callback_query(AdminRequestStates.confirming, F.data == "adm_req:back_from_confirm")
+async def adm_req_back_from_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Немає доступу.", show_alert=True)
+        return
+    await state.set_state(AdminRequestStates.waiting_contact)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(
+        "📱 Вкажіть контакт або пропустіть:",
+        reply_markup=_admin_contact_keyboard(),
+    )
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# Скасування на будь-якому кроці
+# ---------------------------------------------------------------------------
+
+@router.message(
+    F.text == "❌ Скасувати заявку",
+    F.func(lambda m: True),  # буде відловлено лише у відповідних станах завдяки фільтрам нижче
+    AdminRequestStates.waiting_location,
+)
+async def adm_req_cancel_location(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.clear()
+    from bot.keyboards.reply import admin_menu_keyboard
+    await message.answer("❌ Заявку скасовано.", reply_markup=admin_menu_keyboard())
+
+
+@router.message(F.text == "❌ Скасувати заявку", AdminRequestStates.waiting_description)
+async def adm_req_cancel_description(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.clear()
+    from bot.keyboards.reply import admin_menu_keyboard
+    await message.answer("❌ Заявку скасовано.", reply_markup=admin_menu_keyboard())
+
+
+@router.message(F.text == "❌ Скасувати заявку", AdminRequestStates.waiting_media)
+async def adm_req_cancel_media(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.clear()
+    from bot.keyboards.reply import admin_menu_keyboard
+    await message.answer("❌ Заявку скасовано.", reply_markup=admin_menu_keyboard())
+
+
+@router.message(F.text == "❌ Скасувати заявку", AdminRequestStates.waiting_contact)
+async def adm_req_cancel_contact(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    await state.clear()
+    from bot.keyboards.reply import admin_menu_keyboard
+    await message.answer("❌ Заявку скасовано.", reply_markup=admin_menu_keyboard())
+
+
+@router.callback_query(F.data == "adm_req:cancel")
+async def adm_req_cancel_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Немає доступу.", show_alert=True)
+        return
+    await state.clear()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    from bot.keyboards.reply import admin_menu_keyboard
+    await callback.message.answer("❌ Заявку скасовано.", reply_markup=admin_menu_keyboard())
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# Підтвердження та збереження
+# ---------------------------------------------------------------------------
+
+@router.callback_query(AdminRequestStates.confirming, F.data == "adm_req:confirm")
+async def adm_req_confirm(
+    callback: CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
+    bot_instance: Bot,
+) -> None:
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("Немає доступу.", show_alert=True)
+        return
+
+    fsm_data = await state.get_data()
+
+    # Знаходимо або створюємо запис адміна у таблиці users
+    from bot.repositories.user_repo import get_or_create_user
+    user = await get_or_create_user(
+        session=session,
+        telegram_id=callback.from_user.id,
+        username=callback.from_user.username,
+    )
+
+    category = Category(fsm_data["adm_category"])
+    lat = fsm_data.get("adm_latitude")
+    lon = fsm_data.get("adm_longitude")
+    address_text = fsm_data.get("adm_address_text")
+    media_files: list[dict] = fsm_data.get("adm_media", [])
+    contact = fsm_data.get("adm_contact")
+
+    location: dict | None = None
+    if lat is not None and lon is not None:
+        location = {"latitude": lat, "longitude": lon}
+        if address_text:
+            location["address_text"] = address_text
+    elif address_text:
+        location = {"address_text": address_text}
+
+    service = RequestService(session=session, bot=bot_instance)
+    req = await service.create_request(
+        user_id=user.id,
+        category=category,
+        description=fsm_data.get("adm_description", ""),
+        location=location,
+        media_files=media_files,
+        contact=contact,
+    )
+
+    # Публікуємо в канал (INJURED/LOST), але НЕ надсилаємо сповіщення адміну
+    try:
+        await service.publish_to_channel(req, settings.CHANNEL_ID)
+    except Exception as exc:
+        logger.warning("Failed to publish admin request to channel: %s", exc)
+
+    await state.clear()
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    from bot.keyboards.reply import admin_menu_keyboard
+    await callback.message.answer(
+        f"✅ Заявку <b>#{req.id}</b> успішно створено і додано до загальної бази.",
+        reply_markup=admin_menu_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer()

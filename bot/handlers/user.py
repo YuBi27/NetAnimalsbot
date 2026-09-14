@@ -170,6 +170,21 @@ async def admin_btn_broadcast(message: Message, state: FSMContext) -> None:
 # Звичайні користувацькі хендлери
 # ---------------------------------------------------------------------------
 
+@router.message(F.text == "➕ Створити заявку")
+async def admin_btn_create_request(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    from bot.handlers.admin import _admin_category_keyboard
+    from bot.states import AdminRequestStates
+
+    await state.set_state(AdminRequestStates.waiting_category)
+    await message.answer(
+        "➕ <b>Нова заявка від адміністратора</b>\n\nОберіть категорію:",
+        reply_markup=_admin_category_keyboard(),
+        parse_mode="HTML",
+    )
+
+
 @router.message(F.text == "🚨 Звіти про укуси")
 async def admin_btn_bites(message: Message, session: AsyncSession) -> None:
     if not _is_admin(message.from_user.id):

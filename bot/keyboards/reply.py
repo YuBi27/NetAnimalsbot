@@ -108,5 +108,6 @@ def admin_menu_keyboard() -> ReplyKeyboardMarkup:
     )
     builder.row(
         KeyboardButton(text="🚨 Звіти про укуси"),
+        KeyboardButton(text="➕ Створити заявку"),
     )
     return builder.as_markup(resize_keyboard=True)

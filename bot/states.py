@@ -31,3 +31,13 @@ class BiteReportStates(StatesGroup):
 
 class LostAnimalBrowseStates(StatesGroup):
     browsing = State()
+
+
+class AdminRequestStates(StatesGroup):
+    """FSM для подачі заявки адміністратором."""
+    waiting_category = State()
+    waiting_location = State()
+    waiting_description = State()
+    waiting_media = State()
+    waiting_contact = State()
+    confirming = State()
