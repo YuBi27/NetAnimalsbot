@@ -861,11 +861,33 @@ async def adm_req_confirm(
         contact=contact,
     )
 
-    # Публікуємо в канал (INJURED/LOST), але НЕ надсилаємо сповіщення адміну
+    # Публікуємо в канал (INJURED/LOST)
     try:
         await service.publish_to_channel(req, settings.CHANNEL_ID)
     except Exception as exc:
         logger.warning("Failed to publish admin request to channel: %s", exc)
+
+    # Надсилаємо сповіщення адміну — точно так само як для звичайних заявок,
+    # щоб заявка з'явилась у чаті з кнопками зміни статусу
+    from bot.utils.formatters import format_admin_message
+    admin_text = format_admin_message(req, user)
+    try:
+        await bot_instance.send_message(
+            chat_id=callback.from_user.id,
+            text=admin_text,
+            reply_markup=admin_request_keyboard(req.id),
+            parse_mode="HTML",
+        )
+        for mf in media_files:
+            try:
+                if mf["type"] == "photo":
+                    await bot_instance.send_photo(chat_id=callback.from_user.id, photo=mf["file_id"])
+                else:
+                    await bot_instance.send_video(chat_id=callback.from_user.id, video=mf["file_id"])
+            except Exception as exc:
+                logger.warning("Failed to forward media: %s", exc)
+    except Exception as exc:
+        logger.error("Failed to send admin request notification: %s", exc)
 
     await state.clear()
 
@@ -876,7 +898,7 @@ async def adm_req_confirm(
 
     from bot.keyboards.reply import admin_menu_keyboard
     await callback.message.answer(
-        f"✅ Заявку <b>#{req.id}</b> успішно створено і додано до загальної бази.",
+        f"✅ Заявку <b>#{req.id}</b> створено.",
         reply_markup=admin_menu_keyboard(),
         parse_mode="HTML",
     )
