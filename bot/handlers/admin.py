@@ -212,9 +212,16 @@ async def change_status_callback(
         return
 
     # IN_PROGRESS — без коментаря, одразу змінюємо
+    # notify=True але пропускаємо сповіщення якщо заявник = адмін (щоб не дублювати)
+    admin_telegram_id = callback.from_user.id
     service = RequestService(session=session, bot=bot_instance)
     try:
-        req = await service.change_status(request_id, new_status, notify=True)
+        req = await service.change_status(
+            request_id,
+            new_status,
+            notify=True,
+            skip_notify_for=admin_telegram_id,
+        )
     except ValueError as exc:
         await callback.answer(str(exc), show_alert=True)
         return
@@ -306,10 +313,14 @@ async def _apply_status_change(
         return
 
     # Сповіщення заявнику — статус + коментар одним повідомленням
+    # Якщо заявник є адміном — не надсилаємо зайвого сповіщення
+    actor_telegram_id = (
+        target.from_user.id if (isinstance(target, (Message, CallbackQuery)) and target.from_user) else None
+    )
     result = await session.execute(select(User).where(User.id == req.user_id))
     user = result.scalar_one_or_none()
 
-    if user:
+    if user and user.telegram_id != actor_telegram_id:
         st_label = STATUS_LABELS.get(new_status, new_status)
         user_text = f"ℹ️ Статус вашої заявки <b>#{req.id}</b> змінено: {st_label}"
         if comment:
@@ -325,7 +336,7 @@ async def _apply_status_change(
 
     st_label = STATUS_LABELS.get(new_status, new_status)
     confirm_text = f"✅ Заявку <b>#{req.id}</b> змінено на {st_label}."
-    if comment:
+    if comment and user and user.telegram_id != actor_telegram_id:
         confirm_text += "\n💬 Коментар надіслано заявнику."
 
     msg = target if isinstance(target, Message) else target.message

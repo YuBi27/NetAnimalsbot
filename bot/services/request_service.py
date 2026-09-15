@@ -67,8 +67,18 @@ class RequestService:
         req = await self._load_request(req.id)
         return req
 
-    async def change_status(self, request_id: int, new_status: Status, notify: bool = True) -> Request:
-        """Validate transition, persist new status, and optionally notify the request owner."""
+    async def change_status(
+        self,
+        request_id: int,
+        new_status: Status,
+        notify: bool = True,
+        skip_notify_for: int | None = None,
+    ) -> Request:
+        """Validate transition, persist new status, and optionally notify the request owner.
+
+        skip_notify_for: telegram_id — якщо заявник є цим користувачем, сповіщення не надсилається
+        (потрібно щоб не дублювати повідомлення коли адмін змінює статус власної заявки).
+        """
         req = await request_repo.update_status(self.session, request_id, new_status)
         await self.session.commit()
 
@@ -79,7 +89,7 @@ class RequestService:
                 select(User).where(User.id == req.user_id)
             )
             user = user_result.scalar_one_or_none()
-            if user is not None:
+            if user is not None and user.telegram_id != skip_notify_for:
                 await self.notify_user_status_change(req, user.telegram_id)
 
         return req
